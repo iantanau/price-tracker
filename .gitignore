@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.venv.bak/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# Build and packaging
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+*.egg-info/
+*.egg
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.cache
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Debug output
+debug.html
+*.debug
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Project-specific debug archives
+kimi-debug-session_*.zip
