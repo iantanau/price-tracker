@@ -5,7 +5,7 @@ rule engine whether a notification is warranted, and delegates delivery to
 a notifier. It contains no business rules itself.
 """
 
-from models.notification_payload import NotificationPayload
+from models.notification_payload import NotificationItem, NotificationPayload
 from models.parsed_result import ParsedResult
 from models.product import Product
 from monitors.base import Monitor
@@ -59,31 +59,41 @@ class MonitorService:
 
         logger.info("Loaded %d enabled product(s)", len(products))
 
-        notified = 0
+        items: list[NotificationItem] = []
         failed = 0
 
         for product in products:
             try:
-                if self._check_product(product):
-                    notified += 1
+                item = self._check_product(product)
+                if item is not None:
+                    items.append(item)
             except Exception:
                 failed += 1
                 logger.exception("Error monitoring product %s", product.id)
 
+        if items:
+            self.notifier.send(
+                NotificationPayload(
+                    subject=self._build_subject(items),
+                    items=tuple(items),
+                )
+            )
+
         logger.info(
             "Monitoring pass complete: %d notification(s), %d failure(s)",
-            notified,
+            len(items),
             failed,
         )
 
-    def _check_product(self, product: Product) -> bool:
-        """Check a single product and send a notification if rules match.
+    def _check_product(self, product: Product) -> NotificationItem | None:
+        """Check a single product and return an alert item if rules match.
 
         Args:
             product: Product to check.
 
         Returns:
-            ``True`` if a notification was sent, otherwise ``False``.
+            A ``NotificationItem`` when a notification should fire, otherwise
+            ``None``.
         """
         logger.info("Fetching product %s - %s", product.id, product.name)
 
@@ -92,13 +102,10 @@ class MonitorService:
 
         if not self.rule_engine.should_notify(product, result):
             logger.info("No notification needed for product %s", product.id)
-            return False
+            return None
 
-        payload = self._build_payload(product, result)
-        self.notifier.send(payload)
-
-        logger.info("Notification sent for product %s", product.id)
-        return True
+        logger.info("Notification queued for product %s", product.id)
+        return self._build_item(product, result)
 
     def _record_price(self, product: Product, result: ParsedResult) -> None:
         """Record an observed price in history when one is available.
@@ -118,28 +125,35 @@ class MonitorService:
         except Exception:
             logger.exception("Failed to record price for product %s", product.id)
 
-    def _build_payload(self, product: Product, result) -> NotificationPayload:
-        """Build a notification payload for a product that matched a rule.
+    def _build_item(self, product: Product, result) -> NotificationItem:
+        """Build a structured alert item for a matched product.
 
         Args:
             product: Product that triggered the notification.
             result: Parsed observation for the product.
 
         Returns:
-            A populated notification payload.
+            A populated notification item.
         """
-        price = result.price
-        price_text = (
-            f"{price.value} {price.currency}" if price else "unknown price"
+        return NotificationItem(
+            product_id=product.id,
+            name=product.name,
+            url=product.url,
+            price=result.price,
+            target_price=product.target_price,
+            brand=product.brand,
+            category=product.category,
         )
 
-        subject = f"Price alert: {product.name}"
-        body = (
-            f"The price for {product.name} is now {price_text}.\n"
-            f"Product URL: {product.url}"
-        )
+    def _build_subject(self, items: list[NotificationItem]) -> str:
+        """Build a short subject line for a batch of alerts.
 
-        if product.target_price is not None:
-            body += f"\nTarget price: {product.target_price}"
+        Args:
+            items: Alert items that will be sent in this notification.
 
-        return NotificationPayload(subject=subject, body=body)
+        Returns:
+            A subject summarising the batch.
+        """
+        if len(items) == 1:
+            return f"Price alert: {items[0].name}"
+        return f"Price alert: {len(items)} products"

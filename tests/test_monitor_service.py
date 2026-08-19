@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from models.notification_payload import NotificationPayload
+from models.notification_payload import NotificationItem, NotificationPayload
 from models.parsed_result import ParsedResult
 from models.price import Price
 from models.product import Product
@@ -60,9 +60,37 @@ class TestMonitorService:
 
         payload = self.notifier.send.call_args[0][0]
         assert isinstance(payload, NotificationPayload)
-        assert product.name in payload.subject
-        assert "90.00" in payload.body
-        assert product.url in payload.body
+        assert payload.subject == "Price alert: Product p001"
+        assert len(payload.items) == 1
+        item = payload.items[0]
+        assert item.product_id == "p001"
+        assert item.name == "Product p001"
+        assert item.price == Price(value=Decimal("90.00"), currency="AUD")
+        assert item.target_price == Decimal("100.00")
+        assert item.url == product.url
+
+    def test_sends_single_notification_for_multiple_matches(self) -> None:
+        """Aggregates all matching products into one notification."""
+        first = self._make_product("p001")
+        second = self._make_product("p002")
+        self.product_store.list_enabled.return_value = [first, second]
+        self.monitor.fetch.side_effect = [
+            ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD")),
+            ParsedResult(price=Price(value=Decimal("80.00"), currency="AUD")),
+        ]
+        self.rule_engine.should_notify.return_value = True
+
+        self.service.run()
+
+        self.notifier.send.assert_called_once()
+        payload = self.notifier.send.call_args[0][0]
+        assert isinstance(payload, NotificationPayload)
+        assert payload.subject == "Price alert: 2 products"
+        assert [item.product_id for item in payload.items] == ["p001", "p002"]
+        assert [item.price.value for item in payload.items] == [
+            Decimal("90.00"),
+            Decimal("80.00"),
+        ]
 
     def test_does_not_send_notification_when_rule_does_not_match(self) -> None:
         """Does not send a notification when the rule engine says not to."""
@@ -94,6 +122,8 @@ class TestMonitorService:
 
         assert self.monitor.fetch.call_count == 2
         self.notifier.send.assert_called_once()
+        payload = self.notifier.send.call_args[0][0]
+        assert [item.product_id for item in payload.items] == ["p002"]
 
     def test_handles_empty_product_list(self) -> None:
         """Handles an empty enabled product list gracefully."""

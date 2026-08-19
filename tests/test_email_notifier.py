@@ -1,12 +1,14 @@
 """Tests for EmailNotifier message construction and delivery."""
 
+from decimal import Decimal
 from email.message import EmailMessage
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from config.settings import Settings
-from models.notification_payload import NotificationPayload
+from models.notification_payload import NotificationItem, NotificationPayload
+from models.price import Price
 from notifiers.base import NotifierError
 from notifiers.email_notifier import EmailNotifier
 
@@ -28,9 +30,24 @@ class TestEmailNotifier:
         defaults.update(overrides)
         return Settings(**defaults)
 
+    def _item(self, **overrides) -> NotificationItem:
+        """Create a single notification item."""
+        defaults = {
+            "product_id": "p001",
+            "name": "Example Product",
+            "url": "https://example.com/p/1",
+            "price": Price(value=Decimal("49.95"), currency="AUD"),
+            "target_price": Decimal("39.99"),
+        }
+        defaults.update(overrides)
+        return NotificationItem(**defaults)
+
     def _payload(self, **overrides) -> NotificationPayload:
         """Create a notification payload."""
-        defaults = {"subject": "Price alert", "body": "The price dropped."}
+        defaults = {
+            "subject": "Price alert: Example Product",
+            "items": (self._item(),),
+        }
         defaults.update(overrides)
         return NotificationPayload(**defaults)
 
@@ -50,10 +67,43 @@ class TestEmailNotifier:
 
         message = mock_server.send_message.call_args[0][0]
         assert isinstance(message, EmailMessage)
-        assert message["Subject"] == "Price alert"
+        assert message["Subject"] == "Price alert: Example Product"
         assert message["From"] == "alerts@test.local"
         assert message["To"] == "user@test.local"
-        assert message.get_content().strip() == "The price dropped."
+
+        text = message.get_body(preferencelist=("plain",)).get_content().strip()
+        assert "Example Product: 49.95 AUD" in text
+        assert "https://example.com/p/1" in text
+
+        html = message.get_body(preferencelist=("html",)).get_content()
+        assert "Example Product" in html
+        assert "https://example.com/p/1" in html
+
+    @patch("notifiers.email_notifier.smtplib.SMTP")
+    def test_renders_multiple_items(self, mock_smtp_class) -> None:
+        """Renders every item in a multi-product notification."""
+        mock_server = MagicMock()
+        mock_smtp_class.return_value.__enter__.return_value = mock_server
+
+        payload = self._payload(
+            subject="Price alert: 2 products",
+            items=(
+                self._item(name="First", product_id="p001"),
+                self._item(
+                    name="Second",
+                    product_id="p002",
+                    url="https://example.com/p/2",
+                ),
+            ),
+        )
+        notifier = EmailNotifier(self._settings())
+        notifier.send(payload)
+
+        message = mock_server.send_message.call_args[0][0]
+        text = message.get_body(preferencelist=("plain",)).get_content().strip()
+        assert "First: 49.95 AUD" in text
+        assert "Second: 49.95 AUD" in text
+        assert "https://example.com/p/2" in text
 
     @patch("notifiers.email_notifier.smtplib.SMTP_SSL")
     def test_sends_email_with_ssl(self, mock_smtp_ssl_class) -> None:
