@@ -41,7 +41,7 @@ class EmbeddedJsonPriceParser(ProductParser):
         json_text = self._extract_json_assignment(content, product.json_variable, product.id)
         data = self._parse_json(json_text, product.json_variable, product.id)
 
-        price_value = self._get_path(data, product.price_path, product.id)
+        price_value = self._get_first_existing(data, product.price_path, product.id)
         price = self._coerce_price(price_value, product, data)
 
         currency = self._get_currency(data, product)
@@ -155,6 +155,44 @@ class EmbeddedJsonPriceParser(ProductParser):
             current = current[part]
         return current
 
+    def _get_first_existing(self, data: dict, path_spec: str, product_id: str) -> object:
+        """Return the first non-null value from a ``|``-separated path list.
+
+        Each segment is tried in order. Missing paths and JSON ``null`` values
+        are skipped so, for example, a sale price can fall back to the regular
+        price when the promotional price is absent.
+
+        Args:
+            data: Parsed JSON object.
+            path_spec: One or more dot-separated paths, separated by ``|``.
+            product_id: Product identifier used in error messages.
+
+        Returns:
+            The first non-null value found at one of the paths.
+
+        Raises:
+            ParseError: If none of the paths resolve to a non-null value.
+        """
+        last_error = None
+        for path in path_spec.split("|"):
+            path = path.strip()
+            if not path:
+                continue
+            try:
+                value = self._get_path(data, path, product_id)
+            except ParseError as exc:
+                last_error = exc
+                continue
+            if value is None:
+                continue
+            return value
+
+        if last_error is not None:
+            raise last_error
+        raise ParseError(
+            f"No value found at any path '{path_spec}' for product {product_id}"
+        )
+
     def _coerce_price(self, value: object, product: Product, data: dict) -> Decimal:
         """Convert a raw JSON value into a Decimal price.
 
@@ -200,7 +238,7 @@ class EmbeddedJsonPriceParser(ProductParser):
             ParseError: If the currency path is configured but missing.
         """
         if product.currency_path:
-            currency = self._get_path(data, product.currency_path, product.id)
+            currency = self._get_first_existing(data, product.currency_path, product.id)
             if not isinstance(currency, str):
                 raise ParseError(
                     f"Currency path '{product.currency_path}' does not contain a string "

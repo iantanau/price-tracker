@@ -112,3 +112,56 @@ class TestMonitorService:
 
         self.monitor.fetch.assert_not_called()
         self.notifier.send.assert_not_called()
+
+    def _service_with_history_store(self, history_store: Mock) -> MonitorService:
+        """Return a service wired with a price history store."""
+        return MonitorService(
+            product_store=self.product_store,
+            monitor=self.monitor,
+            rule_engine=self.rule_engine,
+            notifier=self.notifier,
+            price_history_store=history_store,
+        )
+
+    def test_records_price_after_fetching(self) -> None:
+        """A parsed price is recorded in the price history store."""
+        product = self._make_product("p001")
+        self.product_store.list_enabled.return_value = [product]
+        price = Price(value=Decimal("90.00"), currency="AUD")
+        self.monitor.fetch.return_value = ParsedResult(price=price)
+        self.rule_engine.should_notify.return_value = False
+        history_store = Mock()
+        service = self._service_with_history_store(history_store)
+
+        service.run()
+
+        history_store.record.assert_called_once_with("p001", price)
+
+    def test_does_not_record_when_price_missing(self) -> None:
+        """A fetch without a price does not write history."""
+        product = self._make_product("p001")
+        self.product_store.list_enabled.return_value = [product]
+        self.monitor.fetch.return_value = ParsedResult(price=None)
+        self.rule_engine.should_notify.return_value = False
+        history_store = Mock()
+        service = self._service_with_history_store(history_store)
+
+        service.run()
+
+        history_store.record.assert_not_called()
+
+    def test_recording_failure_does_not_prevent_notification(self) -> None:
+        """History write failures are isolated from alert delivery."""
+        product = self._make_product("p001")
+        self.product_store.list_enabled.return_value = [product]
+        self.monitor.fetch.return_value = ParsedResult(
+            price=Price(value=Decimal("90.00"), currency="AUD")
+        )
+        self.rule_engine.should_notify.return_value = True
+        history_store = Mock()
+        history_store.record.side_effect = Exception("history unavailable")
+        service = self._service_with_history_store(history_store)
+
+        service.run()
+
+        self.notifier.send.assert_called_once()

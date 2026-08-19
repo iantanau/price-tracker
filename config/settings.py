@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     smtp_from: str = Field(default="", description="From email address")
     smtp_to: str = Field(default="", description="Comma-separated list of recipient email addresses")
 
+    # Supabase / PostgreSQL storage settings
+    supabase_database_url: str = Field(
+        default="",
+        description="Supabase/PostgreSQL connection string (Supavisor transaction pooler)",
+    )
+
     # Application settings
     log_level: str = Field(default="INFO", description="Logging level")
 

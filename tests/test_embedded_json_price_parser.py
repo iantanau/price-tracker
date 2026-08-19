@@ -51,6 +51,48 @@ class TestEmbeddedJsonPriceParser:
         assert result.price.value == Decimal("99.95")
         assert result.price.currency == "AUD"
 
+    def test_prefers_promo_when_both_paths_present(self, embedded_json_html: str) -> None:
+        """Prefers the promotional price when both promo and base paths resolve."""
+        self.product.price_path = (
+            "entity.products.SKU-12345.prices.promo.value"
+            "|entity.products.SKU-12345.prices.base.value"
+        )
+        self.product.currency_path = (
+            "entity.products.SKU-12345.prices.promo.currency.code"
+            "|entity.products.SKU-12345.prices.base.currency.code"
+        )
+
+        result = self.parser.parse(embedded_json_html, self.product)
+
+        assert result.price is not None
+        assert result.price.value == Decimal("79.95")
+        assert result.price.currency == "AUD"
+
+    def test_falls_back_to_base_when_promo_is_null(self) -> None:
+        """Falls back to the base price when the promo path is JSON null."""
+        html = (
+            "<script>window.__PRELOADED_STATE__ = {"
+            '"entity": {"products": {"SKU-12345": {'
+            '"prices": {'
+            '"base": {"currency": {"code": "AUD"}, "value": 99.95},'
+            '"promo": null'
+            "}}}}};</script>"
+        )
+        self.product.price_path = (
+            "entity.products.SKU-12345.prices.promo.value"
+            "|entity.products.SKU-12345.prices.base.value"
+        )
+        self.product.currency_path = (
+            "entity.products.SKU-12345.prices.promo.currency.code"
+            "|entity.products.SKU-12345.prices.base.currency.code"
+        )
+
+        result = self.parser.parse(html, self.product)
+
+        assert result.price is not None
+        assert result.price.value == Decimal("99.95")
+        assert result.price.currency == "AUD"
+
     def test_uses_product_currency_when_currency_path_missing(
         self, embedded_json_html: str
     ) -> None:

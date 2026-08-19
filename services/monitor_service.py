@@ -6,11 +6,12 @@ a notifier. It contains no business rules itself.
 """
 
 from models.notification_payload import NotificationPayload
+from models.parsed_result import ParsedResult
 from models.product import Product
 from monitors.base import Monitor
 from notifiers.base import Notifier
 from services.rule_engine import RuleEngine
-from storage.base import ProductStore
+from storage.base import PriceHistoryStore, ProductStore
 from utils.logging import get_logger
 
 logger = get_logger("services.monitor_service")
@@ -25,6 +26,7 @@ class MonitorService:
         monitor: Monitor,
         rule_engine: RuleEngine,
         notifier: Notifier,
+        price_history_store: PriceHistoryStore | None = None,
     ) -> None:
         """Initialize the service with its collaborators.
 
@@ -33,11 +35,13 @@ class MonitorService:
             monitor: Fetches and parses product state.
             rule_engine: Decides whether a notification should fire.
             notifier: Delivers notification payloads.
+            price_history_store: Optional sink for observed price history.
         """
         self.product_store = product_store
         self.monitor = monitor
         self.rule_engine = rule_engine
         self.notifier = notifier
+        self.price_history_store = price_history_store
 
     def run(self) -> None:
         """Run one monitoring pass over all enabled products.
@@ -84,6 +88,7 @@ class MonitorService:
         logger.info("Fetching product %s - %s", product.id, product.name)
 
         result = self.monitor.fetch(product)
+        self._record_price(product, result)
 
         if not self.rule_engine.should_notify(product, result):
             logger.info("No notification needed for product %s", product.id)
@@ -94,6 +99,24 @@ class MonitorService:
 
         logger.info("Notification sent for product %s", product.id)
         return True
+
+    def _record_price(self, product: Product, result: ParsedResult) -> None:
+        """Record an observed price in history when one is available.
+
+        History recording is best-effort: a storage failure must not prevent
+        the notification flow from continuing.
+
+        Args:
+            product: Product whose price was observed.
+            result: Parsed observation for the product.
+        """
+        if self.price_history_store is None or result.price is None:
+            return
+
+        try:
+            self.price_history_store.record(product.id, result.price)
+        except Exception:
+            logger.exception("Failed to record price for product %s", product.id)
 
     def _build_payload(self, product: Product, result) -> NotificationPayload:
         """Build a notification payload for a product that matched a rule.

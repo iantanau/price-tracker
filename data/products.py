@@ -18,7 +18,7 @@ PRODUCTS: list[Product] = [
         id="uniqlo-heattech-ultra-warm-t-shirt",
         name="Uniqlo HEATTECH ULTRA WARM Crew Neck Long Sleeve T-Shirt",
         site=Site(name="Uniqlo"),
-        url="https://www.uniqlo.com/au/en/products/E479525-000/00?colorDisplayCode=08&sizeDisplayCode=004",
+        url="https://www.uniqlo.com/au/en/products/E479525-000/00?colorDisplayCode=08",
         price_selector="",  # not used by embedded_json parser
         brand="Uniqlo",
         category="Clothes",
@@ -27,8 +27,14 @@ PRODUCTS: list[Product] = [
         target_price=Decimal("39.99"),
         parser_type="embedded_json",
         json_variable="window.__PRELOADED_STATE__",
-        price_path="entity.pdpEntity.E479525-000-00.product.prices.promo.value",
-        currency_path="entity.pdpEntity.E479525-000-00.product.prices.promo.currency.code",
+        price_path=(
+            "entity.pdpEntity.E479525-000-00.product.prices.promo.value"
+            "|entity.pdpEntity.E479525-000-00.product.prices.base.value"
+        ),
+        currency_path=(
+            "entity.pdpEntity.E479525-000-00.product.prices.promo.currency.code"
+            "|entity.pdpEntity.E479525-000-00.product.prices.base.currency.code"
+        ),
     ),
     # Product(
     #     id="example-monitor-1",
