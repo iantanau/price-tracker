@@ -195,3 +195,41 @@ class TestMonitorService:
         service.run()
 
         self.notifier.send.assert_called_once()
+
+    def test_passes_previous_and_lowest_prices_to_rule_engine(self) -> None:
+        """Passes the previous and lowest recorded prices to the rule engine."""
+        product = self._make_product("p001")
+        self.product_store.list_enabled.return_value = [product]
+        result = ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD"))
+        self.monitor.fetch.return_value = result
+        self.rule_engine.should_notify.return_value = True
+        previous = Price(value=Decimal("110.00"), currency="AUD")
+        lowest = Price(value=Decimal("110.00"), currency="AUD")
+        history_store = Mock()
+        history_store.get_latest.return_value = previous
+        history_store.get_lowest.return_value = lowest
+        service = self._service_with_history_store(history_store)
+
+        service.run()
+
+        self.rule_engine.should_notify.assert_called_once_with(
+            product, result, previous, lowest
+        )
+
+    def test_history_read_failure_treated_as_no_history(self) -> None:
+        """Treats failed history reads as no prior history rather than blocking."""
+        product = self._make_product("p001")
+        self.product_store.list_enabled.return_value = [product]
+        result = ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD"))
+        self.monitor.fetch.return_value = result
+        self.rule_engine.should_notify.return_value = True
+        history_store = Mock()
+        history_store.get_latest.side_effect = Exception("read failed")
+        history_store.get_lowest.side_effect = Exception("read failed")
+        service = self._service_with_history_store(history_store)
+
+        service.run()
+
+        self.rule_engine.should_notify.assert_called_once_with(
+            product, result, None, None
+        )

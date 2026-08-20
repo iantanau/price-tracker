@@ -7,6 +7,7 @@ a notifier. It contains no business rules itself.
 
 from models.notification_payload import NotificationItem, NotificationPayload
 from models.parsed_result import ParsedResult
+from models.price import Price
 from models.product import Product
 from monitors.base import Monitor
 from notifiers.base import Notifier
@@ -98,9 +99,13 @@ class MonitorService:
         logger.info("Fetching product %s - %s", product.id, product.name)
 
         result = self.monitor.fetch(product)
+        previous_price = self._get_previous_price(product.id)
+        lowest_price = self._get_lowest_price(product.id)
         self._record_price(product, result)
 
-        if not self.rule_engine.should_notify(product, result):
+        if not self.rule_engine.should_notify(
+            product, result, previous_price, lowest_price
+        ):
             logger.info("No notification needed for product %s", product.id)
             return None
 
@@ -124,6 +129,43 @@ class MonitorService:
             self.price_history_store.record(product.id, result.price)
         except Exception:
             logger.exception("Failed to record price for product %s", product.id)
+
+    def _get_previous_price(self, product_id: str) -> Price | None:
+        """Return the most recent recorded price before this observation.
+
+        A missing history store or read failure is treated as ``None`` so a
+        product with no known history still notifies on its first crossing.
+
+        Args:
+            product_id: Product to look up.
+
+        Returns:
+            The previous price observation, or ``None`` when unavailable.
+        """
+        if self.price_history_store is None:
+            return None
+        try:
+            return self.price_history_store.get_latest(product_id)
+        except Exception:
+            logger.exception("Failed to read previous price for product %s", product_id)
+            return None
+
+    def _get_lowest_price(self, product_id: str) -> Price | None:
+        """Return the lowest recorded price for a product, if available.
+
+        Args:
+            product_id: Product to look up.
+
+        Returns:
+            The lowest price observation, or ``None`` when unavailable.
+        """
+        if self.price_history_store is None:
+            return None
+        try:
+            return self.price_history_store.get_lowest(product_id)
+        except Exception:
+            logger.exception("Failed to read lowest price for product %s", product_id)
+            return None
 
     def _build_item(self, product: Product, result) -> NotificationItem:
         """Build a structured alert item for a matched product.
