@@ -26,6 +26,10 @@ class TestTargetPriceRule:
             target_price=Decimal("100.00"),
         )
 
+    def _result(self, value: str) -> ParsedResult:
+        """Build a parsed result with the given AUD price."""
+        return ParsedResult(price=Price(value=Decimal(value), currency="AUD"))
+
     def test_notifies_when_price_below_target(self) -> None:
         """Notifies when current price is strictly below the target."""
         result = ParsedResult(price=Price(value=Decimal("99.99"), currency="AUD"))
@@ -56,6 +60,44 @@ class TestTargetPriceRule:
         result = ParsedResult(price=None)
 
         assert self.rule.should_notify(self.product, result) is False
+
+    def test_notifies_when_no_previous_history(self) -> None:
+        """Notifies when there is no prior price history."""
+        result = self._result("99.99")
+
+        assert self.rule.should_notify(self.product, result, None, None) is True
+
+    def test_does_not_notify_when_price_stays_below_target(self) -> None:
+        """Does not repeat an alert while the price stays below target."""
+        previous = Price(value=Decimal("90.00"), currency="AUD")
+        lowest = Price(value=Decimal("90.00"), currency="AUD")
+        result = self._result("90.00")
+
+        assert self.rule.should_notify(self.product, result, previous, lowest) is False
+
+    def test_notifies_when_crossing_from_above_target(self) -> None:
+        """Notifies when the price crosses from above into the target range."""
+        previous = Price(value=Decimal("110.00"), currency="AUD")
+        lowest = Price(value=Decimal("110.00"), currency="AUD")
+        result = self._result("99.99")
+
+        assert self.rule.should_notify(self.product, result, previous, lowest) is True
+
+    def test_notifies_on_new_low_below_target(self) -> None:
+        """Notifies on a new all-time low while already below target."""
+        previous = Price(value=Decimal("90.00"), currency="AUD")
+        lowest = Price(value=Decimal("90.00"), currency="AUD")
+        result = self._result("85.00")
+
+        assert self.rule.should_notify(self.product, result, previous, lowest) is True
+
+    def test_does_not_notify_on_recovery_to_seen_price(self) -> None:
+        """Does not notify when the price recovers to an already-seen value."""
+        previous = Price(value=Decimal("92.00"), currency="AUD")
+        lowest = Price(value=Decimal("85.00"), currency="AUD")
+        result = self._result("90.00")
+
+        assert self.rule.should_notify(self.product, result, previous, lowest) is False
 
 
 class TestRuleEngine:
