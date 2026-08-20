@@ -2,13 +2,14 @@
 
 This composite parser keeps the monitor and service layers unchanged while
 allowing different products to use different extraction strategies. Products
-choose their parser via the ``parser_type`` field; unknown types fall back
-to CSS parsing to preserve existing behaviour.
+choose their parser via the ``parser_type`` field; ``"auto"`` selects a parser
+from the raw content, while explicit types are dispatched directly.
 """
 
 from models.parsed_result import ParsedResult
 from models.product import Product
 from parsers.base import ParseError, ProductParser
+from parsers.detector import detect_parser_type
 
 
 class DispatchingProductParser(ProductParser):
@@ -41,6 +42,9 @@ class DispatchingProductParser(ProductParser):
                 the underlying parser fails.
         """
         parser_type = product.parser_type or "css"
+        if parser_type == "auto":
+            parser_type = detect_parser_type(content, product, set(self._parsers))
+
         parser = self._parsers.get(parser_type)
 
         if parser is None:

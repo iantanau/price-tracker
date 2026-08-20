@@ -13,6 +13,7 @@ from notifiers.email_notifier import EmailNotifier
 from parsers.css_price_parser import CssPriceParser
 from parsers.dispatching_product_parser import DispatchingProductParser
 from parsers.embedded_json_price_parser import EmbeddedJsonPriceParser
+from parsers.json_ld_price_parser import JsonLdPriceParser
 from services.monitor_service import MonitorService
 from services.rule_engine import RuleEngine, TargetPriceRule
 from storage.in_memory import InMemoryProductStore
@@ -54,6 +55,7 @@ def main() -> None:
             parsers={
                 "css": CssPriceParser(),
                 "embedded_json": EmbeddedJsonPriceParser(),
+                "json_ld": JsonLdPriceParser(),
             }
         )
         monitor = WebMonitor(client=http_client, parser=parser)
