@@ -170,6 +170,7 @@ Open `data/products.py` and add a new `Product` entry:
 
 ```python
 from decimal import Decimal
+from models.listing import ProductListing
 from models.product import Product
 from models.site import Site
 
@@ -177,14 +178,20 @@ PRODUCTS: list[Product] = [
     Product(
         id="dell-xps-15-001",
         name="Dell XPS 15",
-        site=Site(name="Dell Australia"),
-        url="https://www.dell.com/en-au/shop/laptops/xps-15/spd/xps-15-9530-laptop",
-        price_selector=".ps-dell-price",
         brand="Dell",
         category="laptops",
         currency="AUD",
         enabled=True,
         target_price=Decimal("2499.00"),
+        listings=[
+            ProductListing(
+                id="dell-au",
+                site=Site(name="Dell Australia"),
+                url="https://www.dell.com/en-au/shop/laptops/xps-15/spd/xps-15-9530-laptop",
+                price_selector=".ps-dell-price",
+                currency="AUD",
+            ),
+        ],
     ),
 ]
 ```
@@ -195,14 +202,12 @@ PRODUCTS: list[Product] = [
 |-------|----------|-------------|
 | `id` | Yes | Stable unique identifier for the product. |
 | `name` | Yes | Human-readable product name. |
-| `site` | Yes | `Site` value object describing the retailer. |
-| `url` | Yes | Direct URL to the product page. |
-| `price_selector` | Yes | CSS selector that points to the element containing the price. |
+| `listings` | Yes | One or more `ProductListing` objects, each with a `site`, `url`, and parser config. |
 | `brand` | No | Product brand, e.g. `Dell`, `Apple`. |
 | `category` | No | Product category, e.g. `laptops`, `monitors`. |
 | `currency` | No | ISO 4217 currency code. Defaults to `AUD`. |
 | `enabled` | No | Whether the product should be monitored. Defaults to `True`. |
-| `target_price` | No | Notification fires when the current price is less than or equal to this value. |
+| `target_price` | No | Notification fires when the best listing price is less than or equal to this value. |
 
 ### Why Manual CSS Selectors?
 

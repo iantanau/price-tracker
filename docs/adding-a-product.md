@@ -27,9 +27,7 @@ Every product must have these fields:
 |-------|---------|---------|
 | `id` | `"dell-xps-15-001"` | Stable unique identifier. Never change this once set. |
 | `name` | `"Dell XPS 15"` | Human-readable name used in notifications. |
-| `site` | `Site(name="Dell Australia")` | The retailer or website. |
-| `url` | `"https://www.dell.com/..."` | Direct link to the product page. |
-| `price_selector` | `".ps-dell-price"` | CSS selector that targets the price element. |
+| `listings` | `[ProductListing(...)]` | One or more retailer listings (site + URL + parser config). |
 
 ## Optional but Useful Fields
 
@@ -46,6 +44,7 @@ Every product must have these fields:
 ```python
 from decimal import Decimal
 
+from models.listing import ProductListing
 from models.product import Product
 from models.site import Site
 
@@ -53,14 +52,20 @@ PRODUCTS: list[Product] = [
     Product(
         id="dell-xps-15-001",
         name="Dell XPS 15",
-        site=Site(name="Dell Australia"),
-        url="https://www.dell.com/en-au/shop/laptops/xps-15/spd/xps-15-9530-laptop",
-        price_selector=".ps-dell-price",
         brand="Dell",
         category="laptops",
         currency="AUD",
         enabled=True,
         target_price=Decimal("2499.00"),
+        listings=[
+            ProductListing(
+                id="dell-au",
+                site=Site(name="Dell Australia"),
+                url="https://www.dell.com/en-au/shop/laptops/xps-15/spd/xps-15-9530-laptop",
+                price_selector=".ps-dell-price",
+                currency="AUD",
+            ),
+        ],
     ),
 ]
 ```
@@ -155,10 +160,15 @@ Set `enabled=False` to keep the product in the catalog but skip it during monito
 Product(
     id="old-laptop-001",
     name="Old Laptop",
-    site=Site(name="Example Store"),
-    url="https://example.com/old-laptop",
-    price_selector=".price",
     enabled=False,
+    listings=[
+        ProductListing(
+            id="example",
+            site=Site(name="Example Store"),
+            url="https://example.com/old-laptop",
+            price_selector=".price",
+        ),
+    ],
 )
 ```
 
@@ -213,6 +223,7 @@ If the price text is messy (e.g. includes words like "inc. GST" or "Save $300"),
 ```python
 from decimal import Decimal
 
+from models.listing import ProductListing
 from models.product import Product
 from models.site import Site
 
@@ -220,20 +231,30 @@ PRODUCTS: list[Product] = [
     Product(
         id="dell-xps-15-001",
         name="Dell XPS 15",
-        site=Site(name="Dell Australia"),
-        url="https://www.dell.com/en-au/shop/laptops/xps-15/spd/xps-15-9530-laptop",
-        price_selector=".ps-dell-price",
         currency="AUD",
         target_price=Decimal("2499.00"),
+        listings=[
+            ProductListing(
+                id="dell-au",
+                site=Site(name="Dell Australia"),
+                url="https://www.dell.com/en-au/shop/laptops/xps-15/spd/xps-15-9530-laptop",
+                price_selector=".ps-dell-price",
+            ),
+        ],
     ),
     Product(
         id="apple-airpods-pro-2",
         name="Apple AirPods Pro 2",
-        site=Site(name="Apple Australia"),
-        url="https://www.apple.com/au/shop/product/MTJV3ZA/A/airpods-pro-2",
-        price_selector=".rf-hcard-copy .nowrap",
         currency="AUD",
         target_price=Decimal("300.00"),
+        listings=[
+            ProductListing(
+                id="apple-au",
+                site=Site(name="Apple Australia"),
+                url="https://www.apple.com/au/shop/product/MTJV3ZA/A/airpods-pro-2",
+                price_selector=".rf-hcard-copy .nowrap",
+            ),
+        ],
     ),
 ]
 ```
