@@ -82,11 +82,11 @@ class PriceHistoryStore(ABC):
     """Abstract store for historical price records."""
 
     @abstractmethod
-    def record(self, product_id: str, price: Price) -> None:
-        """Store a price observation for a product.
+    def record(self, listing_id: str, price: Price) -> None:
+        """Store a price observation for a listing.
 
         Args:
-            product_id: Product the price belongs to.
+            listing_id: Listing the price belongs to.
             price: Normalised price value observed.
 
         Raises:
@@ -95,11 +95,11 @@ class PriceHistoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_latest(self, product_id: str) -> Price | None:
-        """Return the most recent recorded price for a product, if any.
+    def get_latest(self, listing_id: str) -> Price | None:
+        """Return the most recent recorded price for a listing, if any.
 
         Args:
-            product_id: Product to look up.
+            listing_id: Listing to look up.
 
         Returns:
             The latest price observation, or ``None`` if no history exists.
@@ -110,11 +110,11 @@ class PriceHistoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_history(self, product_id: str) -> list[Price]:
-        """Return all recorded prices for a product, newest first.
+    def get_history(self, listing_id: str) -> list[Price]:
+        """Return all recorded prices for a listing, newest first.
 
         Args:
-            product_id: Product to look up.
+            listing_id: Listing to look up.
 
         Returns:
             A list of recorded prices ordered from most to least recent.
@@ -125,11 +125,11 @@ class PriceHistoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_lowest(self, product_id: str) -> Price | None:
-        """Return the lowest recorded price for a product, if any.
+    def get_lowest(self, listing_id: str) -> Price | None:
+        """Return the lowest recorded price for a listing, if any.
 
         Args:
-            product_id: Product to look up.
+            listing_id: Listing to look up.
 
         Returns:
             The lowest price observation, or ``None`` if no history exists.

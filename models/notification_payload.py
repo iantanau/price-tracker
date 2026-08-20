@@ -7,8 +7,18 @@ from models.price import Price
 
 
 @dataclass(frozen=True)
+class ListingPrice:
+    """One retailer's current price for a product."""
+
+    listing_id: str
+    site_name: str
+    url: str
+    price: Price | None = None
+
+
+@dataclass(frozen=True)
 class NotificationItem:
-    """One product alert inside a notification.
+    """One product comparison alert inside a notification.
 
     Carries structured data rather than rendered text so each notifier can
     format it for its own channel (email HTML, Telegram Markdown, WeChat text).
@@ -16,20 +26,22 @@ class NotificationItem:
     Attributes:
         product_id: Stable product identifier.
         name: Product name.
-        url: Product page URL.
-        price: Normalised current price, if parsed.
+        listings: Current price for every retailer listing.
+        best_price: Cheapest price across the listings.
         target_price: Optional threshold that triggered the alert.
         brand: Optional product brand.
         category: Optional product category.
+        trigger: Why the alert fired (``target`` or ``new_low``).
     """
 
     product_id: str
     name: str
-    url: str
-    price: Price | None = None
+    listings: tuple[ListingPrice, ...] = ()
+    best_price: Price | None = None
     target_price: Decimal | None = None
     brand: str | None = None
     category: str | None = None
+    trigger: str | None = None
 
 
 @dataclass(frozen=True)

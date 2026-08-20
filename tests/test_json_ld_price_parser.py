@@ -4,8 +4,8 @@ from decimal import Decimal
 
 import pytest
 
+from models.listing import ProductListing
 from models.parsed_result import ParsedResult
-from models.product import Product
 from models.site import Site
 from parsers.base import ParseError
 from parsers.json_ld_price_parser import JsonLdPriceParser
@@ -15,14 +15,12 @@ class TestJsonLdPriceParser:
     """Behaviour tests for the JSON-LD price parser."""
 
     def setup_method(self) -> None:
-        """Create a fresh parser and product for each test."""
+        """Create a fresh parser and listing for each test."""
         self.parser = JsonLdPriceParser()
-        self.product = Product(
-            id="json-ld-product",
-            name="JSON-LD Product",
+        self.listing = ProductListing(
+            id="json-ld-listing",
             site=Site(name="JSON-LD Store"),
             url="https://json-ld-store.example/products/001",
-            price_selector="",
             currency="AUD",
         )
 
@@ -35,7 +33,7 @@ class TestJsonLdPriceParser:
             "</script>"
         )
 
-        result = self.parser.parse(html, self.product)
+        result = self.parser.parse(html, self.listing)
 
         assert isinstance(result, ParsedResult)
         assert result.price is not None
@@ -50,7 +48,7 @@ class TestJsonLdPriceParser:
             "</script>"
         )
 
-        result = self.parser.parse(html, self.product)
+        result = self.parser.parse(html, self.listing)
 
         assert result.price is not None
         assert result.price.value == Decimal("39.90")
@@ -66,20 +64,20 @@ class TestJsonLdPriceParser:
             "</script>"
         )
 
-        result = self.parser.parse(html, self.product)
+        result = self.parser.parse(html, self.listing)
 
         assert result.price is not None
         assert result.price.value == Decimal("100.00")
 
-    def test_uses_product_currency_as_fallback(self) -> None:
-        """Falls back to the product currency when JSON-LD omits it."""
+    def test_uses_listing_currency_as_fallback(self) -> None:
+        """Falls back to the listing currency when JSON-LD omits it."""
         html = (
             '<script type="application/ld+json">'
             '{"@type":"Offer","price":"50"}'
             "</script>"
         )
 
-        result = self.parser.parse(html, self.product)
+        result = self.parser.parse(html, self.listing)
 
         assert result.price is not None
         assert result.price.currency == "AUD"
@@ -89,4 +87,4 @@ class TestJsonLdPriceParser:
         html = "<html><body>no structured data</body></html>"
 
         with pytest.raises(ParseError, match="No JSON-LD product price"):
-            self.parser.parse(html, self.product)
+            self.parser.parse(html, self.listing)

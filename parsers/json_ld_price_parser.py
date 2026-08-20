@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from models.parsed_result import ParsedResult
 from models.price import Price
-from models.product import Product
+from models.listing import ProductListing
 from parsers.base import ParseError, ProductParser
 
 
@@ -19,13 +19,13 @@ _JSON_LD_PATTERN = re.compile(
 class JsonLdPriceParser(ProductParser):
     """Extract a price from schema.org JSON-LD ``Product``/``Offer`` data."""
 
-    def parse(self, content: str, product: Product) -> ParsedResult:
+    def parse(self, content: str, listing: ProductListing) -> ParsedResult:
         """Extract the first JSON-LD price found in ``content``.
 
         Args:
             content: Raw HTML containing one or more ``application/ld+json``
                 blocks.
-            product: Product being parsed; its currency is used as fallback.
+            listing: Listing being parsed; its currency is used as fallback.
 
         Returns:
             ParsedResult containing the extracted price.
@@ -33,10 +33,10 @@ class JsonLdPriceParser(ProductParser):
         Raises:
             ParseError: If no Product/Offer price can be found.
         """
-        price = self.find_price(content, product.currency)
+        price = self.find_price(content, listing.currency)
         if price is None:
             raise ParseError(
-                f"No JSON-LD product price found for product {product.id}"
+                f"No JSON-LD product price found for listing {listing.id}"
             )
         return ParsedResult(price=price)
 

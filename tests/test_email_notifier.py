@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from config.settings import Settings
-from models.notification_payload import NotificationItem, NotificationPayload
+from models.notification_payload import ListingPrice, NotificationItem, NotificationPayload
 from models.price import Price
 from notifiers.base import NotifierError
 from notifiers.email_notifier import EmailNotifier
@@ -35,8 +35,15 @@ class TestEmailNotifier:
         defaults = {
             "product_id": "p001",
             "name": "Example Product",
-            "url": "https://example.com/p/1",
-            "price": Price(value=Decimal("49.95"), currency="AUD"),
+            "listings": (
+                ListingPrice(
+                    listing_id="l1",
+                    site_name="Example Store",
+                    url="https://example.com/p/1",
+                    price=Price(value=Decimal("49.95"), currency="AUD"),
+                ),
+            ),
+            "best_price": Price(value=Decimal("49.95"), currency="AUD"),
             "target_price": Decimal("39.99"),
         }
         defaults.update(overrides)
@@ -72,7 +79,7 @@ class TestEmailNotifier:
         assert message["To"] == "user@test.local"
 
         text = message.get_body(preferencelist=("plain",)).get_content().strip()
-        assert "Example Product: 49.95 AUD" in text
+        assert "Example Store: 49.95 AUD (lowest)" in text
         assert "https://example.com/p/1" in text
 
         html = message.get_body(preferencelist=("html",)).get_content()
@@ -88,11 +95,31 @@ class TestEmailNotifier:
         payload = self._payload(
             subject="Price alert: 2 products",
             items=(
-                self._item(name="First", product_id="p001"),
+                self._item(
+                    name="First",
+                    product_id="p001",
+                    listings=(
+                        ListingPrice(
+                            listing_id="l1",
+                            site_name="First Store",
+                            url="https://example.com/p/1",
+                            price=Price(value=Decimal("49.95"), currency="AUD"),
+                        ),
+                    ),
+                    best_price=Price(value=Decimal("49.95"), currency="AUD"),
+                ),
                 self._item(
                     name="Second",
                     product_id="p002",
-                    url="https://example.com/p/2",
+                    listings=(
+                        ListingPrice(
+                            listing_id="l2",
+                            site_name="Second Store",
+                            url="https://example.com/p/2",
+                            price=Price(value=Decimal("49.95"), currency="AUD"),
+                        ),
+                    ),
+                    best_price=Price(value=Decimal("49.95"), currency="AUD"),
                 ),
             ),
         )
@@ -101,8 +128,8 @@ class TestEmailNotifier:
 
         message = mock_server.send_message.call_args[0][0]
         text = message.get_body(preferencelist=("plain",)).get_content().strip()
-        assert "First: 49.95 AUD" in text
-        assert "Second: 49.95 AUD" in text
+        assert "First Store: 49.95 AUD" in text
+        assert "Second Store: 49.95 AUD" in text
         assert "https://example.com/p/2" in text
 
     @patch("notifiers.email_notifier.smtplib.SMTP_SSL")

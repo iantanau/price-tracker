@@ -17,7 +17,7 @@ from parsers.base import ParseError
 class TestWebMonitor:
     """Tests for WebMonitor's coordination of HTTP client and parser."""
 
-    def test_returns_parsed_result_from_parser(self, base_product) -> None:
+    def test_returns_parsed_result_from_parser(self, base_listing) -> None:
         """Fetches content, delegates to the parser, and returns its result."""
         http_client = Mock()
         parser = Mock()
@@ -31,16 +31,16 @@ class TestWebMonitor:
         )
 
         monitor = WebMonitor(client=http_client, parser=parser)
-        result = monitor.fetch(base_product)
+        result = monitor.fetch_listing(base_listing)
 
-        http_client.get.assert_called_once_with(base_product.url)
+        http_client.get.assert_called_once_with(base_listing.url)
         parser.parse.assert_called_once_with(
-            "<html><body>$99.95</body></html>", base_product
+            "<html><body>$99.95</body></html>", base_listing
         )
         assert result.price is not None
         assert result.price.value == Decimal("99.95")
 
-    def test_wraps_http_client_error_in_monitor_error(self, base_product) -> None:
+    def test_wraps_http_client_error_in_monitor_error(self, base_listing) -> None:
         """Raises MonitorError when the HTTP client fails."""
         http_client = Mock()
         parser = Mock()
@@ -48,10 +48,10 @@ class TestWebMonitor:
 
         monitor = WebMonitor(client=http_client, parser=parser)
 
-        with pytest.raises(MonitorError, match="Failed to fetch product"):
-            monitor.fetch(base_product)
+        with pytest.raises(MonitorError, match="Failed to fetch listing"):
+            monitor.fetch_listing(base_listing)
 
-    def test_wraps_parse_error_in_monitor_error(self, base_product) -> None:
+    def test_wraps_parse_error_in_monitor_error(self, base_listing) -> None:
         """Raises MonitorError when the parser fails."""
         http_client = Mock()
         parser = Mock()
@@ -64,5 +64,5 @@ class TestWebMonitor:
 
         monitor = WebMonitor(client=http_client, parser=parser)
 
-        with pytest.raises(MonitorError, match="Failed to parse product"):
-            monitor.fetch(base_product)
+        with pytest.raises(MonitorError, match="Failed to parse listing"):
+            monitor.fetch_listing(base_listing)

@@ -1,11 +1,12 @@
 """Tests for DispatchingProductParser."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
 
+from models.listing import ProductListing
 from models.parsed_result import ParsedResult
-from models.product import Product
 from models.site import Site
 from parsers.base import ParseError
 from parsers.css_price_parser import CssPriceParser
@@ -15,7 +16,7 @@ from parsers.json_ld_price_parser import JsonLdPriceParser
 
 
 class TestDispatchingProductParser:
-    """Tests for parser selection by product type."""
+    """Tests for parser selection by listing type."""
 
     def setup_method(self) -> None:
         """Create a dispatcher with both parsers registered."""
@@ -26,11 +27,11 @@ class TestDispatchingProductParser:
             }
         )
 
-    def test_dispatches_to_css_parser(self, css_html: str, base_product) -> None:
+    def test_dispatches_to_css_parser(self, css_html: str, base_listing) -> None:
         """Routes to CssPriceParser when parser_type is css."""
-        base_product.parser_type = "css"
+        listing = replace(base_listing, parser_type="css")
 
-        result = self.dispatcher.parse(css_html, base_product)
+        result = self.dispatcher.parse(css_html, listing)
 
         assert isinstance(result, ParsedResult)
         assert result.price is not None
@@ -40,12 +41,10 @@ class TestDispatchingProductParser:
         self, embedded_json_html: str
     ) -> None:
         """Routes to EmbeddedJsonPriceParser when parser_type is embedded_json."""
-        product = Product(
-            id="json-product-001",
-            name="Embedded JSON Product",
+        listing = ProductListing(
+            id="json-listing-001",
             site=Site(name="JSON Store"),
             url="https://json-store.example/products/001",
-            price_selector="",
             currency="AUD",
             parser_type="embedded_json",
             json_variable="window.__PRELOADED_STATE__",
@@ -53,26 +52,26 @@ class TestDispatchingProductParser:
             currency_path="entity.products.SKU-12345.prices.promo.currency.code",
         )
 
-        result = self.dispatcher.parse(embedded_json_html, product)
+        result = self.dispatcher.parse(embedded_json_html, listing)
 
         assert isinstance(result, ParsedResult)
         assert result.price is not None
         assert result.price.value == Decimal("79.95")
 
-    def test_raises_for_unknown_parser_type(self, css_html: str, base_product) -> None:
+    def test_raises_for_unknown_parser_type(self, css_html: str, base_listing) -> None:
         """Raises ParseError when parser_type is not registered."""
-        base_product.parser_type = "unknown"
+        listing = replace(base_listing, parser_type="unknown")
 
         with pytest.raises(ParseError, match="Unknown parser type"):
-            self.dispatcher.parse(css_html, base_product)
+            self.dispatcher.parse(css_html, listing)
 
     def test_defaults_to_css_when_parser_type_is_empty(
-        self, css_html: str, base_product
+        self, css_html: str, base_listing
     ) -> None:
         """Defaults to CSS parsing when parser_type is empty or unset."""
-        base_product.parser_type = ""
+        listing = replace(base_listing, parser_type="")
 
-        result = self.dispatcher.parse(css_html, base_product)
+        result = self.dispatcher.parse(css_html, listing)
 
         assert result.price is not None
         assert result.price.value == Decimal("1999.00")
@@ -90,12 +89,10 @@ class TestDispatchingProductParser:
     def test_auto_dispatches_to_json_ld(self) -> None:
         """Routes auto to JSON-LD when structured product price exists."""
         dispatcher = self._dispatcher_with_json_ld()
-        product = Product(
+        listing = ProductListing(
             id="auto-json-ld",
-            name="Auto JSON-LD Product",
             site=Site(name="Auto Store"),
             url="https://auto-store.example/products/001",
-            price_selector="",
             currency="AUD",
             parser_type="auto",
         )
@@ -106,7 +103,7 @@ class TestDispatchingProductParser:
             "</script>"
         )
 
-        result = dispatcher.parse(html, product)
+        result = dispatcher.parse(html, listing)
 
         assert result.price is not None
         assert result.price.value == Decimal("499.00")
@@ -116,12 +113,10 @@ class TestDispatchingProductParser:
     ) -> None:
         """Routes auto to embedded JSON when its variable is present."""
         dispatcher = self._dispatcher_with_json_ld()
-        product = Product(
-            id="auto-json-product",
-            name="Auto Embedded JSON Product",
+        listing = ProductListing(
+            id="auto-json-listing",
             site=Site(name="Auto Store"),
             url="https://auto-store.example/products/001",
-            price_selector="",
             currency="AUD",
             parser_type="auto",
             json_variable="window.__PRELOADED_STATE__",
@@ -129,17 +124,17 @@ class TestDispatchingProductParser:
             currency_path="entity.products.SKU-12345.prices.promo.currency.code",
         )
 
-        result = dispatcher.parse(embedded_json_html, product)
+        result = dispatcher.parse(embedded_json_html, listing)
 
         assert result.price is not None
         assert result.price.value == Decimal("79.95")
 
-    def test_auto_falls_back_to_css(self, css_html: str, base_product) -> None:
+    def test_auto_falls_back_to_css(self, css_html: str, base_listing) -> None:
         """Routes auto to CSS when no JSON-LD or embedded JSON signal exists."""
         dispatcher = self._dispatcher_with_json_ld()
-        base_product.parser_type = "auto"
+        listing = replace(base_listing, parser_type="auto")
 
-        result = dispatcher.parse(css_html, base_product)
+        result = dispatcher.parse(css_html, listing)
 
         assert result.price is not None
         assert result.price.value == Decimal("1999.00")

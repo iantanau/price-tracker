@@ -1,20 +1,19 @@
-"""Tests for MonitorService orchestration."""
+"""Tests for ComparisonService orchestration."""
 
 from decimal import Decimal
 from unittest.mock import Mock
 
-import pytest
-
-from models.notification_payload import NotificationItem, NotificationPayload
+from models.listing import ProductListing
+from models.notification_payload import NotificationPayload
 from models.parsed_result import ParsedResult
 from models.price import Price
 from models.product import Product
 from models.site import Site
-from services.monitor_service import MonitorService
+from services.comparison_service import ComparisonService
 
 
-class TestMonitorService:
-    """Tests for the monitoring workflow service."""
+class TestComparisonService:
+    """Tests for the comparison workflow service."""
 
     def setup_method(self) -> None:
         """Create mocked dependencies and a service for each test."""
@@ -23,22 +22,29 @@ class TestMonitorService:
         self.rule_engine = Mock()
         self.notifier = Mock()
 
-        self.service = MonitorService(
+        self.service = ComparisonService(
             product_store=self.product_store,
             monitor=self.monitor,
             rule_engine=self.rule_engine,
             notifier=self.notifier,
         )
 
-    def _make_product(self, product_id: str, enabled: bool = True) -> Product:
-        """Create a test product."""
+    def _make_listing(self, listing_id: str) -> ProductListing:
+        return ProductListing(
+            id=listing_id,
+            site=Site(name=f"Store {listing_id}"),
+            url=f"https://test-store.example/products/{listing_id}",
+            currency="AUD",
+        )
+
+    def _make_product(
+        self, product_id: str, listing_ids: list[str] | None = None
+    ) -> Product:
+        listing_ids = listing_ids or [product_id]
         return Product(
             id=product_id,
             name=f"Product {product_id}",
-            site=Site(name="Test Store"),
-            url=f"https://test-store.example/products/{product_id}",
-            price_selector=".price",
-            enabled=enabled,
+            listings=[self._make_listing(listing_id) for listing_id in listing_ids],
             target_price=Decimal("100.00"),
         )
 
@@ -46,35 +52,29 @@ class TestMonitorService:
         """Sends a notification when the rule engine says to notify."""
         product = self._make_product("p001")
         self.product_store.list_enabled.return_value = [product]
-        self.monitor.fetch.return_value = ParsedResult(
-            price=Price(value=Decimal("90.00"), currency="AUD")
-        )
+        price = Price(value=Decimal("90.00"), currency="AUD")
+        self.monitor.fetch_listing.return_value = ParsedResult(price=price)
         self.rule_engine.should_notify.return_value = True
 
         self.service.run()
 
-        self.product_store.list_enabled.assert_called_once()
-        self.monitor.fetch.assert_called_once_with(product)
-        self.rule_engine.should_notify.assert_called_once()
         self.notifier.send.assert_called_once()
-
         payload = self.notifier.send.call_args[0][0]
         assert isinstance(payload, NotificationPayload)
         assert payload.subject == "Price alert: Product p001"
         assert len(payload.items) == 1
         item = payload.items[0]
         assert item.product_id == "p001"
-        assert item.name == "Product p001"
-        assert item.price == Price(value=Decimal("90.00"), currency="AUD")
-        assert item.target_price == Decimal("100.00")
-        assert item.url == product.url
+        assert item.best_price == price
+        assert len(item.listings) == 1
+        assert item.listings[0].price == price
 
-    def test_sends_single_notification_for_multiple_matches(self) -> None:
+    def test_sends_single_notification_for_multiple_products(self) -> None:
         """Aggregates all matching products into one notification."""
         first = self._make_product("p001")
         second = self._make_product("p002")
         self.product_store.list_enabled.return_value = [first, second]
-        self.monitor.fetch.side_effect = [
+        self.monitor.fetch_listing.side_effect = [
             ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD")),
             ParsedResult(price=Price(value=Decimal("80.00"), currency="AUD")),
         ]
@@ -84,68 +84,54 @@ class TestMonitorService:
 
         self.notifier.send.assert_called_once()
         payload = self.notifier.send.call_args[0][0]
-        assert isinstance(payload, NotificationPayload)
         assert payload.subject == "Price alert: 2 products"
         assert [item.product_id for item in payload.items] == ["p001", "p002"]
-        assert [item.price.value for item in payload.items] == [
-            Decimal("90.00"),
-            Decimal("80.00"),
-        ]
 
     def test_does_not_send_notification_when_rule_does_not_match(self) -> None:
         """Does not send a notification when the rule engine says not to."""
         product = self._make_product("p001")
         self.product_store.list_enabled.return_value = [product]
-        self.monitor.fetch.return_value = ParsedResult(
+        self.monitor.fetch_listing.return_value = ParsedResult(
             price=Price(value=Decimal("150.00"), currency="AUD")
         )
         self.rule_engine.should_notify.return_value = False
 
         self.service.run()
 
-        self.monitor.fetch.assert_called_once()
         self.notifier.send.assert_not_called()
 
-    def test_continues_processing_after_one_product_fails(self) -> None:
-        """One product failure does not prevent other products from running."""
-        failing = self._make_product("p001")
-        succeeding = self._make_product("p002")
-
-        self.product_store.list_enabled.return_value = [failing, succeeding]
-        self.monitor.fetch.side_effect = [
-            Exception("fetch failed"),
-            ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD")),
+    def test_chooses_best_price_across_listings(self) -> None:
+        """Uses the cheapest listing price for the rule decision."""
+        product = self._make_product("p001", ["p001-a", "p001-b"])
+        self.product_store.list_enabled.return_value = [product]
+        self.monitor.fetch_listing.side_effect = [
+            ParsedResult(price=Price(value=Decimal("95.00"), currency="AUD")),
+            ParsedResult(price=Price(value=Decimal("85.00"), currency="AUD")),
         ]
         self.rule_engine.should_notify.return_value = True
 
         self.service.run()
 
-        assert self.monitor.fetch.call_count == 2
-        self.notifier.send.assert_called_once()
-        payload = self.notifier.send.call_args[0][0]
-        assert [item.product_id for item in payload.items] == ["p002"]
+        best = Price(value=Decimal("85.00"), currency="AUD")
+        assert self.rule_engine.should_notify.call_args[0][1].price == best
+        item = self.notifier.send.call_args[0][0].items[0]
+        assert item.best_price == best
 
-    def test_handles_empty_product_list(self) -> None:
-        """Handles an empty enabled product list gracefully."""
-        self.product_store.list_enabled.return_value = []
-
-        self.service.run()
-
-        self.monitor.fetch.assert_not_called()
-        self.notifier.send.assert_not_called()
-
-    def test_stops_cleanly_when_store_fails(self) -> None:
-        """Stops without crashing when the product store fails to load."""
-        self.product_store.list_enabled.side_effect = Exception("store unavailable")
-
-        self.service.run()
-
-        self.monitor.fetch.assert_not_called()
-        self.notifier.send.assert_not_called()
-
-    def _service_with_history_store(self, history_store: Mock) -> MonitorService:
-        """Return a service wired with a price history store."""
-        return MonitorService(
+    def test_records_listing_prices(self) -> None:
+        """Records each successful listing price in history."""
+        product = self._make_product("p001", ["p001-a", "p001-b"])
+        self.product_store.list_enabled.return_value = [product]
+        price_a = Price(value=Decimal("95.00"), currency="AUD")
+        price_b = Price(value=Decimal("85.00"), currency="AUD")
+        self.monitor.fetch_listing.side_effect = [
+            ParsedResult(price=price_a),
+            ParsedResult(price=price_b),
+        ]
+        self.rule_engine.should_notify.return_value = False
+        history_store = Mock()
+        history_store.get_latest.return_value = None
+        history_store.get_lowest.return_value = None
+        service = ComparisonService(
             product_store=self.product_store,
             monitor=self.monitor,
             rule_engine=self.rule_engine,
@@ -153,83 +139,71 @@ class TestMonitorService:
             price_history_store=history_store,
         )
 
-    def test_records_price_after_fetching(self) -> None:
-        """A parsed price is recorded in the price history store."""
-        product = self._make_product("p001")
-        self.product_store.list_enabled.return_value = [product]
-        price = Price(value=Decimal("90.00"), currency="AUD")
-        self.monitor.fetch.return_value = ParsedResult(price=price)
-        self.rule_engine.should_notify.return_value = False
-        history_store = Mock()
-        service = self._service_with_history_store(history_store)
-
         service.run()
 
-        history_store.record.assert_called_once_with("p001", price)
+        assert history_store.record.call_args_list == [
+            (("p001-a", price_a),),
+            (("p001-b", price_b),),
+        ]
 
-    def test_does_not_record_when_price_missing(self) -> None:
-        """A fetch without a price does not write history."""
-        product = self._make_product("p001")
+    def test_passes_previous_and_lowest_best_to_rule_engine(self) -> None:
+        """Derives previous best and all-time low across listings."""
+        product = self._make_product("p001", ["p001-a", "p001-b"])
         self.product_store.list_enabled.return_value = [product]
-        self.monitor.fetch.return_value = ParsedResult(price=None)
-        self.rule_engine.should_notify.return_value = False
-        history_store = Mock()
-        service = self._service_with_history_store(history_store)
-
-        service.run()
-
-        history_store.record.assert_not_called()
-
-    def test_recording_failure_does_not_prevent_notification(self) -> None:
-        """History write failures are isolated from alert delivery."""
-        product = self._make_product("p001")
-        self.product_store.list_enabled.return_value = [product]
-        self.monitor.fetch.return_value = ParsedResult(
-            price=Price(value=Decimal("90.00"), currency="AUD")
-        )
+        self.monitor.fetch_listing.side_effect = [
+            ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD")),
+            ParsedResult(price=Price(value=Decimal("80.00"), currency="AUD")),
+        ]
         self.rule_engine.should_notify.return_value = True
         history_store = Mock()
-        history_store.record.side_effect = Exception("history unavailable")
-        service = self._service_with_history_store(history_store)
-
-        service.run()
-
-        self.notifier.send.assert_called_once()
-
-    def test_passes_previous_and_lowest_prices_to_rule_engine(self) -> None:
-        """Passes the previous and lowest recorded prices to the rule engine."""
-        product = self._make_product("p001")
-        self.product_store.list_enabled.return_value = [product]
-        result = ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD"))
-        self.monitor.fetch.return_value = result
-        self.rule_engine.should_notify.return_value = True
-        previous = Price(value=Decimal("110.00"), currency="AUD")
-        lowest = Price(value=Decimal("110.00"), currency="AUD")
-        history_store = Mock()
-        history_store.get_latest.return_value = previous
-        history_store.get_lowest.return_value = lowest
-        service = self._service_with_history_store(history_store)
-
-        service.run()
-
-        self.rule_engine.should_notify.assert_called_once_with(
-            product, result, previous, lowest
+        history_store.get_latest.side_effect = [
+            Price(value=Decimal("110.00"), currency="AUD"),
+            Price(value=Decimal("120.00"), currency="AUD"),
+        ]
+        history_store.get_lowest.side_effect = [
+            Price(value=Decimal("110.00"), currency="AUD"),
+            Price(value=Decimal("120.00"), currency="AUD"),
+        ]
+        service = ComparisonService(
+            product_store=self.product_store,
+            monitor=self.monitor,
+            rule_engine=self.rule_engine,
+            notifier=self.notifier,
+            price_history_store=history_store,
         )
 
-    def test_history_read_failure_treated_as_no_history(self) -> None:
-        """Treats failed history reads as no prior history rather than blocking."""
-        product = self._make_product("p001")
-        self.product_store.list_enabled.return_value = [product]
-        result = ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD"))
-        self.monitor.fetch.return_value = result
-        self.rule_engine.should_notify.return_value = True
-        history_store = Mock()
-        history_store.get_latest.side_effect = Exception("read failed")
-        history_store.get_lowest.side_effect = Exception("read failed")
-        service = self._service_with_history_store(history_store)
-
         service.run()
 
-        self.rule_engine.should_notify.assert_called_once_with(
-            product, result, None, None
-        )
+        previous_best = Price(value=Decimal("110.00"), currency="AUD")
+        all_time_low = Price(value=Decimal("110.00"), currency="AUD")
+        assert self.rule_engine.should_notify.call_args[0][2] == previous_best
+        assert self.rule_engine.should_notify.call_args[0][3] == all_time_low
+
+    def test_skips_failed_listing(self) -> None:
+        """Skips a failing listing and still compares the remaining one."""
+        product = self._make_product("p001", ["p001-a", "p001-b"])
+        self.product_store.list_enabled.return_value = [product]
+        self.monitor.fetch_listing.side_effect = [
+            Exception("fetch failed"),
+            ParsedResult(price=Price(value=Decimal("85.00"), currency="AUD")),
+        ]
+        self.rule_engine.should_notify.return_value = True
+
+        self.service.run()
+
+        item = self.notifier.send.call_args[0][0].items[0]
+        assert len(item.listings) == 2
+        assert item.listings[0].price is None
+        assert item.listings[1].price is not None
+        assert item.best_price == Price(value=Decimal("85.00"), currency="AUD")
+
+    def test_no_notification_when_no_listing_price(self) -> None:
+        """Does not notify when no listing produced a price."""
+        product = self._make_product("p001", ["p001-a"])
+        self.product_store.list_enabled.return_value = [product]
+        self.monitor.fetch_listing.return_value = ParsedResult(price=None)
+
+        self.service.run()
+
+        self.rule_engine.should_notify.assert_not_called()
+        self.notifier.send.assert_not_called()

@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 
 from models.parsed_result import ParsedResult
-from models.product import Product
+from models.listing import ProductListing
 
 
 class ProductParser(ABC):
@@ -15,12 +15,12 @@ class ProductParser(ABC):
     """
 
     @abstractmethod
-    def parse(self, content: str, product: Product) -> ParsedResult:
+    def parse(self, content: str, listing: ProductListing) -> ParsedResult:
         """Extract structured information from raw content.
 
         Args:
             content: Raw content returned by an HTTP client (e.g. HTML).
-            product: Product being parsed; contains selector hints.
+            listing: Listing being parsed; contains selector/parser hints.
 
         Returns:
             A :class:`ParsedResult` with any extracted fields.

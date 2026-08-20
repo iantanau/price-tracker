@@ -2,7 +2,7 @@
 
 from clients.base import HttpClient, HttpClientError
 from models.parsed_result import ParsedResult
-from models.product import Product
+from models.listing import ProductListing
 from monitors.base import Monitor, MonitorError
 from parsers.base import ParseError, ProductParser
 
@@ -30,11 +30,11 @@ class WebMonitor(Monitor):
         self._client = client
         self._parser = parser
 
-    def fetch(self, product: Product) -> ParsedResult:
-        """Fetch the product page and parse it.
+    def fetch_listing(self, listing: ProductListing) -> ParsedResult:
+        """Fetch the listing page and parse it.
 
         Args:
-            product: Product to monitor.
+            listing: Listing to monitor.
 
         Returns:
             Structured extraction result.
@@ -44,11 +44,11 @@ class WebMonitor(Monitor):
         """
 
         try:
-            response = self._client.get(product.url)
+            response = self._client.get(listing.url)
         except HttpClientError as exc:
-            raise MonitorError(f"Failed to fetch product {product.id}: {exc}") from exc
+            raise MonitorError(f"Failed to fetch listing {listing.id}: {exc}") from exc
 
         try:
-            return self._parser.parse(response.content, product)
+            return self._parser.parse(response.content, listing)
         except ParseError as exc:
-            raise MonitorError(f"Failed to parse product {product.id}: {exc}") from exc
+            raise MonitorError(f"Failed to parse listing {listing.id}: {exc}") from exc

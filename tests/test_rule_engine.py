@@ -7,7 +7,6 @@ import pytest
 from models.parsed_result import ParsedResult
 from models.price import Price
 from models.product import Product
-from models.site import Site
 from services.rule_engine import RuleEngine, TargetPriceRule
 
 
@@ -20,9 +19,6 @@ class TestTargetPriceRule:
         self.product = Product(
             id="rule-product-001",
             name="Rule Test Product",
-            site=Site(name="Rule Store"),
-            url="https://rule-store.example/products/001",
-            price_selector=".price",
             target_price=Decimal("100.00"),
         )
 
@@ -108,9 +104,6 @@ class TestRuleEngine:
         product = Product(
             id="engine-product-001",
             name="Engine Test Product",
-            site=Site(name="Engine Store"),
-            url="https://engine-store.example/products/001",
-            price_selector=".price",
             target_price=Decimal("100.00"),
         )
         result = ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD"))
@@ -124,9 +117,6 @@ class TestRuleEngine:
         product = Product(
             id="engine-product-001",
             name="Engine Test Product",
-            site=Site(name="Engine Store"),
-            url="https://engine-store.example/products/001",
-            price_selector=".price",
             target_price=Decimal("100.00"),
         )
         result = ParsedResult(price=Price(value=Decimal("150.00"), currency="AUD"))
@@ -140,9 +130,6 @@ class TestRuleEngine:
         product = Product(
             id="engine-product-001",
             name="Engine Test Product",
-            site=Site(name="Engine Store"),
-            url="https://engine-store.example/products/001",
-            price_selector=".price",
             target_price=Decimal("100.00"),
         )
         result = ParsedResult(price=Price(value=Decimal("90.00"), currency="AUD"))

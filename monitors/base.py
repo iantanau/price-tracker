@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 
 from models.parsed_result import ParsedResult
-from models.product import Product
+from models.listing import ProductListing
 
 
 class Monitor(ABC):
@@ -15,17 +15,17 @@ class Monitor(ABC):
     """
 
     @abstractmethod
-    def fetch(self, product: Product) -> ParsedResult:
-        """Retrieve and parse the current state of ``product``.
+    def fetch_listing(self, listing: ProductListing) -> ParsedResult:
+        """Retrieve and parse the current state of ``listing``.
 
         Args:
-            product: Product to monitor.
+            listing: Listing to monitor.
 
         Returns:
-            Structured result extracted from the product page.
+            Structured result extracted from the listing page.
 
         Raises:
-            MonitorError: If the product cannot be monitored.
+            MonitorError: If the listing cannot be monitored.
         """
         raise NotImplementedError
 

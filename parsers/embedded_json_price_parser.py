@@ -9,21 +9,21 @@ reads the configured path, without requiring JavaScript execution.
 import json
 from decimal import Decimal, InvalidOperation
 
+from models.listing import ProductListing
 from models.parsed_result import ParsedResult
 from models.price import Price
-from models.product import Product
 from parsers.base import ParseError, ProductParser
 
 
 class EmbeddedJsonPriceParser(ProductParser):
     """Extract a price from JSON embedded in a JavaScript variable."""
 
-    def parse(self, content: str, product: Product) -> ParsedResult:
-        """Extract the price from embedded JSON using the product's paths.
+    def parse(self, content: str, listing: ProductListing) -> ParsedResult:
+        """Extract the price from embedded JSON using the listing's paths.
 
         Args:
             content: Raw HTML content.
-            product: Product configured with ``json_variable``, ``price_path``,
+            listing: Listing configured with ``json_variable``, ``price_path``,
                 and optionally ``currency_path``.
 
         Returns:
@@ -33,21 +33,27 @@ class EmbeddedJsonPriceParser(ProductParser):
             ParseError: If the variable is missing, the JSON is invalid, the
                 path does not exist, or the value is not a valid number.
         """
-        if not product.json_variable:
-            raise ParseError(f"Product {product.id} has no json_variable configured")
-        if not product.price_path:
-            raise ParseError(f"Product {product.id} has no price_path configured")
+        if not listing.json_variable:
+            raise ParseError(f"Listing {listing.id} has no json_variable configured")
+        if not listing.price_path:
+            raise ParseError(f"Listing {listing.id} has no price_path configured")
 
-        json_text = self._extract_json_assignment(content, product.json_variable, product.id)
-        data = self._parse_json(json_text, product.json_variable, product.id)
+        json_text = self._extract_json_assignment(
+            content, listing.json_variable, listing.id
+        )
+        data = self._parse_json(json_text, listing.json_variable, listing.id)
 
-        price_value = self._get_first_existing(data, product.price_path, product.id)
-        price = self._coerce_price(price_value, product, data)
+        price_value = self._get_first_existing(data, listing.price_path, listing.id)
+        price = self._coerce_price(price_value, listing, data)
 
-        currency = self._get_currency(data, product)
-        return ParsedResult(price=Price(value=price, currency=currency, raw_text=str(price_value)))
+        currency = self._get_currency(data, listing)
+        return ParsedResult(
+            price=Price(value=price, currency=currency, raw_text=str(price_value))
+        )
 
-    def _extract_json_assignment(self, content: str, variable: str, product_id: str) -> str:
+    def _extract_json_assignment(
+        self, content: str, variable: str, listing_id: str
+    ) -> str:
         """Extract the JSON object assigned to a JavaScript variable.
 
         The extractor scans character by character so it can handle nested
@@ -57,7 +63,7 @@ class EmbeddedJsonPriceParser(ProductParser):
         Args:
             content: Raw HTML content.
             variable: Variable name to locate, e.g. ``window.__PRELOADED_STATE__``.
-            product_id: Product identifier used in error messages.
+            listing_id: Listing identifier used in error messages.
 
         Returns:
             The JSON object as a string.
@@ -69,13 +75,15 @@ class EmbeddedJsonPriceParser(ProductParser):
         index = content.find(marker)
         if index == -1:
             raise ParseError(
-                f"JavaScript variable '{variable}' not found in HTML for product {product_id}"
+                f"JavaScript variable '{variable}' not found in HTML "
+                f"for listing {listing_id}"
             )
 
         start = content.find("{", index)
         if start == -1:
             raise ParseError(
-                f"No JSON object found after variable '{variable}' for product {product_id}"
+                f"No JSON object found after variable '{variable}' "
+                f"for listing {listing_id}"
             )
 
         depth = 0
@@ -100,16 +108,16 @@ class EmbeddedJsonPriceParser(ProductParser):
 
         raise ParseError(
             f"Could not extract complete JSON object for variable '{variable}' "
-            f"for product {product_id}"
+            f"for listing {listing_id}"
         )
 
-    def _parse_json(self, json_text: str, variable: str, product_id: str) -> dict:
+    def _parse_json(self, json_text: str, variable: str, listing_id: str) -> dict:
         """Parse a JSON string into a dictionary.
 
         Args:
             json_text: JSON object as text.
             variable: Variable name used in error messages.
-            product_id: Product identifier used in error messages.
+            listing_id: Listing identifier used in error messages.
 
         Returns:
             Parsed JSON object.
@@ -121,23 +129,24 @@ class EmbeddedJsonPriceParser(ProductParser):
             data = json.loads(json_text)
         except json.JSONDecodeError as exc:
             raise ParseError(
-                f"Invalid JSON in variable '{variable}' for product {product_id}: {exc}"
+                f"Invalid JSON in variable '{variable}' for listing {listing_id}: {exc}"
             ) from exc
 
         if not isinstance(data, dict):
             raise ParseError(
-                f"Variable '{variable}' does not contain a JSON object for product {product_id}"
+                f"Variable '{variable}' does not contain a JSON object "
+                f"for listing {listing_id}"
             )
 
         return data
 
-    def _get_path(self, data: dict, path: str, product_id: str) -> object:
+    def _get_path(self, data: dict, path: str, listing_id: str) -> object:
         """Traverse a dot-separated path inside a dictionary.
 
         Args:
             data: Parsed JSON object.
             path: Dot-separated path, e.g. ``entity.pdpEntity.001.product.prices.value``.
-            product_id: Product identifier used in error messages.
+            listing_id: Listing identifier used in error messages.
 
         Returns:
             The value at the configured path.
@@ -149,13 +158,15 @@ class EmbeddedJsonPriceParser(ProductParser):
         for part in path.split("."):
             if not isinstance(current, dict) or part not in current:
                 raise ParseError(
-                    f"Path '{path}' does not exist for product {product_id}; "
+                    f"Path '{path}' does not exist for listing {listing_id}; "
                     f"missing segment '{part}'"
                 )
             current = current[part]
         return current
 
-    def _get_first_existing(self, data: dict, path_spec: str, product_id: str) -> object:
+    def _get_first_existing(
+        self, data: dict, path_spec: str, listing_id: str
+    ) -> object:
         """Return the first non-null value from a ``|``-separated path list.
 
         Each segment is tried in order. Missing paths and JSON ``null`` values
@@ -165,7 +176,7 @@ class EmbeddedJsonPriceParser(ProductParser):
         Args:
             data: Parsed JSON object.
             path_spec: One or more dot-separated paths, separated by ``|``.
-            product_id: Product identifier used in error messages.
+            listing_id: Listing identifier used in error messages.
 
         Returns:
             The first non-null value found at one of the paths.
@@ -179,7 +190,7 @@ class EmbeddedJsonPriceParser(ProductParser):
             if not path:
                 continue
             try:
-                value = self._get_path(data, path, product_id)
+                value = self._get_path(data, path, listing_id)
             except ParseError as exc:
                 last_error = exc
                 continue
@@ -190,15 +201,17 @@ class EmbeddedJsonPriceParser(ProductParser):
         if last_error is not None:
             raise last_error
         raise ParseError(
-            f"No value found at any path '{path_spec}' for product {product_id}"
+            f"No value found at any path '{path_spec}' for listing {listing_id}"
         )
 
-    def _coerce_price(self, value: object, product: Product, data: dict) -> Decimal:
+    def _coerce_price(
+        self, value: object, listing: ProductListing, data: dict
+    ) -> Decimal:
         """Convert a raw JSON value into a Decimal price.
 
         Args:
             value: Raw value extracted from the JSON path.
-            product: Product being parsed.
+            listing: Listing being parsed.
             data: Full parsed JSON object (unused, kept for future context).
 
         Returns:
@@ -209,27 +222,27 @@ class EmbeddedJsonPriceParser(ProductParser):
         """
         if isinstance(value, bool) or not isinstance(value, (int, float, str)):
             raise ParseError(
-                f"Value at path '{product.price_path}' is not a valid number for "
-                f"product {product.id}: {value!r}"
+                f"Value at path '{listing.price_path}' is not a valid number for "
+                f"listing {listing.id}: {value!r}"
             )
 
         try:
             return Decimal(str(value))
         except InvalidOperation as exc:
             raise ParseError(
-                f"Value at path '{product.price_path}' is not a valid number for "
-                f"product {product.id}: {value!r}"
+                f"Value at path '{listing.price_path}' is not a valid number for "
+                f"listing {listing.id}: {value!r}"
             ) from exc
 
-    def _get_currency(self, data: dict, product: Product) -> str:
-        """Return the currency code for the product.
+    def _get_currency(self, data: dict, listing: ProductListing) -> str:
+        """Return the currency code for the listing.
 
-        Uses ``product.currency_path`` when provided; otherwise falls back to
-        the product's default ``currency`` field.
+        Uses ``listing.currency_path`` when provided; otherwise falls back to
+        the listing's default ``currency`` field.
 
         Args:
             data: Parsed JSON object.
-            product: Product being parsed.
+            listing: Listing being parsed.
 
         Returns:
             ISO 4217 currency code.
@@ -237,12 +250,14 @@ class EmbeddedJsonPriceParser(ProductParser):
         Raises:
             ParseError: If the currency path is configured but missing.
         """
-        if product.currency_path:
-            currency = self._get_first_existing(data, product.currency_path, product.id)
+        if listing.currency_path:
+            currency = self._get_first_existing(
+                data, listing.currency_path, listing.id
+            )
             if not isinstance(currency, str):
                 raise ParseError(
-                    f"Currency path '{product.currency_path}' does not contain a string "
-                    f"for product {product.id}: {currency!r}"
+                    f"Currency path '{listing.currency_path}' does not contain a string "
+                    f"for listing {listing.id}: {currency!r}"
                 )
             return currency
-        return product.currency
+        return listing.currency

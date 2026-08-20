@@ -14,7 +14,7 @@ from parsers.css_price_parser import CssPriceParser
 from parsers.dispatching_product_parser import DispatchingProductParser
 from parsers.embedded_json_price_parser import EmbeddedJsonPriceParser
 from parsers.json_ld_price_parser import JsonLdPriceParser
-from services.monitor_service import MonitorService
+from services.comparison_service import ComparisonService
 from services.rule_engine import RuleEngine, TargetPriceRule
 from storage.in_memory import InMemoryProductStore
 from storage.postgres import (
@@ -63,7 +63,7 @@ def main() -> None:
         rule_engine = RuleEngine(rules=[TargetPriceRule()])
         notifier = EmailNotifier(settings)
 
-        service = MonitorService(
+        service = ComparisonService(
             product_store=product_store,
             monitor=monitor,
             rule_engine=rule_engine,

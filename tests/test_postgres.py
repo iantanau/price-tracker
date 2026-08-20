@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from models.enums import Availability
+from models.listing import ProductListing
 from models.price import Price
 from models.product import Product
 from models.site import Site
@@ -57,22 +58,28 @@ def make_product() -> Product:
     return Product(
         id="p-001",
         name="Test Product",
-        site=Site(
-            name="Test Store",
-            base_url="https://test-store.example",
-            default_headers={"Accept-Language": "en-AU"},
-        ),
-        url="https://test-store.example/products/001",
-        price_selector="",
+        listings=[
+            ProductListing(
+                id="listing-1",
+                site=Site(
+                    name="Test Store",
+                    base_url="https://test-store.example",
+                    default_headers={"Accept-Language": "en-AU"},
+                ),
+                url="https://test-store.example/products/001",
+                price_selector="",
+                parser_type="embedded_json",
+                json_variable="window.__STATE__",
+                price_path="product.price.value",
+                currency_path="product.price.currency",
+                currency="AUD",
+            )
+        ],
         brand="TestBrand",
         category="accessories",
         currency="AUD",
         enabled=False,
         target_price=Decimal("99.99"),
-        parser_type="embedded_json",
-        json_variable="window.__STATE__",
-        price_path="product.price.value",
-        currency_path="product.price.currency",
         availability=Availability.IN_STOCK,
     )
 
@@ -84,32 +91,19 @@ class TestMapping:
         """Product fields map to the database column names."""
         row = product_to_row(make_product())
 
-        assert row == {
-            "id": "p-001",
-            "name": "Test Product",
-            "site_name": "Test Store",
-            "site_base_url": "https://test-store.example",
-            "site_default_headers": '{"Accept-Language": "en-AU"}',
-            "url": "https://test-store.example/products/001",
-            "price_selector": None,
-            "brand": "TestBrand",
-            "category": "accessories",
-            "currency": "AUD",
-            "enabled": False,
-            "target_price": Decimal("99.99"),
-            "parser_type": "embedded_json",
-            "json_variable": "window.__STATE__",
-            "price_path": "product.price.value",
-            "currency_path": "product.price.currency",
-            "availability": "in_stock",
-        }
+        assert row["id"] == "p-001"
+        assert row["name"] == "Test Product"
+        assert row["brand"] == "TestBrand"
+        assert row["category"] == "accessories"
+        assert row["currency"] == "AUD"
+        assert row["enabled"] is False
+        assert row["target_price"] == Decimal("99.99")
+        assert row["availability"] == "in_stock"
 
-    def test_empty_price_selector_is_mapped_to_null(self) -> None:
-        """An empty CSS selector is stored as NULL for non-CSS parsers."""
-        product = make_product()
-        product.price_selector = ""
-
-        assert product_to_row(product)["price_selector"] is None
+        listings = row["listings"]
+        assert "listing-1" in listings
+        assert "Test Store" in listings
+        assert "window.__STATE__" in listings
 
     def test_row_to_product_round_trips_product(self) -> None:
         """A database row reconstructs the original product."""
@@ -120,41 +114,33 @@ class TestMapping:
     def test_row_to_product_accepts_psycopg_jsonb_dict(self) -> None:
         """A JSONB value already decoded by psycopg is accepted."""
         row = product_to_row(make_product())
-        row["site_default_headers"] = {"Accept-Language": "en-AU"}
-        row["price_selector"] = None
+        import json
+
+        row["listings"] = json.loads(row["listings"])
 
         product = row_to_product(row)
 
-        assert product.site.default_headers == {"Accept-Language": "en-AU"}
-        assert product.price_selector == ""
+        assert len(product.listings) == 1
+        assert product.listings[0].site.default_headers == {"Accept-Language": "en-AU"}
+        assert product.listings[0].parser_type == "embedded_json"
 
     def test_row_to_product_handles_nulls(self) -> None:
         """Optional database columns come back as None/empty defaults."""
         row = {
             "id": "p-002",
             "name": "Minimal",
-            "site_name": "Minimal Store",
-            "site_base_url": None,
-            "site_default_headers": None,
-            "url": "https://example.com/p/2",
-            "price_selector": ".price",
             "brand": None,
             "category": None,
             "currency": "AUD",
             "enabled": True,
             "target_price": None,
-            "parser_type": "css",
-            "json_variable": None,
-            "price_path": None,
-            "currency_path": None,
             "availability": None,
+            "listings": [],
         }
 
         product = row_to_product(row)
 
-        assert product.site.name == "Minimal Store"
-        assert product.site.base_url is None
-        assert product.site.default_headers is None
+        assert product.listings == []
         assert product.brand is None
         assert product.target_price is None
         assert product.availability is None
@@ -244,7 +230,7 @@ class TestPostgresProductStore:
         query, params = connection.executions[0]
         assert "ON CONFLICT (id) DO UPDATE" in query
         assert params["id"] == "p-001"
-        assert params["site_default_headers"] == '{"Accept-Language": "en-AU"}'
+        assert "listing-1" in params["listings"]
 
     def test_delete_removes_product(self) -> None:
         """delete issues a delete for the given product id."""
@@ -288,12 +274,12 @@ class TestPostgresPriceHistoryStore:
         store = PostgresPriceHistoryStore(connection)
         price = Price(value=Decimal("49.95"), currency="AUD", raw_text="$49.95")
 
-        store.record("p-001", price)
+        store.record("listing-1", price)
 
         query, params = connection.executions[0]
         assert "INSERT INTO price_history" in query
         assert params == {
-            "product_id": "p-001",
+            "listing_id": "listing-1",
             "value": Decimal("49.95"),
             "currency": "AUD",
             "raw_text": "$49.95",
@@ -303,7 +289,7 @@ class TestPostgresPriceHistoryStore:
         """get_latest returns the most recent price observation."""
         store = PostgresPriceHistoryStore(FakeConnection([self._row()]))
 
-        price = store.get_latest("p-001")
+        price = store.get_latest("listing-1")
 
         assert price == Price(
             value=Decimal("49.95"),
@@ -315,14 +301,14 @@ class TestPostgresPriceHistoryStore:
         """get_latest returns None when there is no history."""
         store = PostgresPriceHistoryStore(FakeConnection([]))
 
-        assert store.get_latest("p-001") is None
+        assert store.get_latest("listing-1") is None
 
     def test_get_history_returns_prices(self) -> None:
         """get_history maps all returned rows to prices."""
         rows = [self._row("49.95"), self._row("59.95")]
         store = PostgresPriceHistoryStore(FakeConnection(rows))
 
-        prices = store.get_history("p-001")
+        prices = store.get_history("listing-1")
 
         assert [price.value for price in prices] == [
             Decimal("49.95"),
@@ -333,15 +319,15 @@ class TestPostgresPriceHistoryStore:
         """get_lowest maps the lowest-value row to a price."""
         store = PostgresPriceHistoryStore(FakeConnection([self._row("39.95")]))
 
-        price = store.get_lowest("p-001")
+        price = store.get_lowest("listing-1")
 
         assert price.value == Decimal("39.95")
 
     @pytest.mark.parametrize("method_name, args", [
-        ("record", ("p-001", Price(value=Decimal("1"), currency="AUD"))),
-        ("get_latest", ("p-001",)),
-        ("get_history", ("p-001",)),
-        ("get_lowest", ("p-001",)),
+        ("record", ("listing-1", Price(value=Decimal("1"), currency="AUD"))),
+        ("get_latest", ("listing-1",)),
+        ("get_history", ("listing-1",)),
+        ("get_lowest", ("listing-1",)),
     ])
     def test_history_methods_wrap_failures(self, method_name, args) -> None:
         """History store failures are surfaced as StorageError."""

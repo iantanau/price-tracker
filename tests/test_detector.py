@@ -1,22 +1,21 @@
 """Tests for parser auto-detection."""
 
-from models.product import Product
+from models.listing import ProductListing
 from models.site import Site
 from parsers.detector import detect_parser_type
 
 
-def _make_product(**overrides) -> Product:
-    """Create a product with sensible detector-test defaults."""
+def _make_listing(**overrides) -> ProductListing:
+    """Create a listing with sensible detector-test defaults."""
     defaults = {
-        "id": "detector-product",
-        "name": "Detector Product",
+        "id": "detector-listing",
         "site": Site(name="Detector Store"),
         "url": "https://detector-store.example/products/001",
         "price_selector": ".price",
         "currency": "AUD",
     }
     defaults.update(overrides)
-    return Product(**defaults)
+    return ProductListing(**defaults)
 
 
 def test_detects_json_ld_when_price_present() -> None:
@@ -28,16 +27,16 @@ def test_detects_json_ld_when_price_present() -> None:
         "</script>"
     )
 
-    assert detect_parser_type(content, _make_product(), {"json_ld", "css"}) == "json_ld"
+    assert detect_parser_type(content, _make_listing(), {"json_ld", "css"}) == "json_ld"
 
 
 def test_detects_embedded_json_when_no_json_ld() -> None:
-    """Chooses embedded_json when the product variable is present."""
+    """Chooses embedded_json when the listing variable is present."""
     content = "<script>window.__PRELOADED_STATE__ = {\"x\": 1}</script>"
-    product = _make_product(json_variable="window.__PRELOADED_STATE__")
+    listing = _make_listing(json_variable="window.__PRELOADED_STATE__")
 
     assert (
-        detect_parser_type(content, product, {"embedded_json", "css"})
+        detect_parser_type(content, listing, {"embedded_json", "css"})
         == "embedded_json"
     )
 
@@ -46,7 +45,7 @@ def test_falls_back_to_css() -> None:
     """Chooses css when no other signal matches."""
     content = "<html><body>no price signal</body></html>"
 
-    assert detect_parser_type(content, _make_product(), {"css"}) == "css"
+    assert detect_parser_type(content, _make_listing(), {"css"}) == "css"
 
 
 def test_json_ld_wins_over_css() -> None:
@@ -59,7 +58,7 @@ def test_json_ld_wins_over_css() -> None:
         '<div class="price">$499</div>'
     )
 
-    assert detect_parser_type(content, _make_product(), {"json_ld", "css"}) == "json_ld"
+    assert detect_parser_type(content, _make_listing(), {"json_ld", "css"}) == "json_ld"
 
 
 def test_ignores_json_ld_without_price() -> None:
@@ -70,7 +69,7 @@ def test_ignores_json_ld_without_price() -> None:
         "</script>"
     )
 
-    assert detect_parser_type(content, _make_product(), {"json_ld", "css"}) == "css"
+    assert detect_parser_type(content, _make_listing(), {"json_ld", "css"}) == "css"
 
 
 def test_skips_json_ld_when_not_registered() -> None:
@@ -82,4 +81,4 @@ def test_skips_json_ld_when_not_registered() -> None:
         "</script>"
     )
 
-    assert detect_parser_type(content, _make_product(), {"css"}) == "css"
+    assert detect_parser_type(content, _make_listing(), {"css"}) == "css"

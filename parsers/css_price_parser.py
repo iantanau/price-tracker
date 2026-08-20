@@ -7,12 +7,12 @@ from bs4 import BeautifulSoup
 
 from models.parsed_result import ParsedResult
 from models.price import Price
-from models.product import Product
+from models.listing import ProductListing
 from parsers.base import ParseError, ProductParser
 
 
 class CssPriceParser(ProductParser):
-    """Parse a price from HTML using a CSS selector stored on the product."""
+    """Parse a price from HTML using a CSS selector stored on the listing."""
 
     # Matches numbers commonly found in e-commerce price text:
     #   - grouped thousands: 1,999.00
@@ -21,12 +21,12 @@ class CssPriceParser(ProductParser):
     # Thousand separators are validated (groups of exactly three digits).
     _PRICE_PATTERN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|\d+\.\d+")
 
-    def parse(self, content: str, product: Product) -> ParsedResult:
-        """Extract the price from ``content`` using ``product.price_selector``.
+    def parse(self, content: str, listing: ProductListing) -> ParsedResult:
+        """Extract the price from ``content`` using ``listing.price_selector``.
 
         Args:
             content: HTML content.
-            product: Product whose ``price_selector`` points to the price element.
+            listing: Listing whose ``price_selector`` points to the price element.
 
         Returns:
             ParsedResult containing the extracted price.
@@ -35,16 +35,16 @@ class CssPriceParser(ProductParser):
             ParseError: If the selector matches nothing or the price is invalid.
         """
         soup = BeautifulSoup(content, "html.parser")
-        elements = soup.select(product.price_selector)
+        elements = soup.select(listing.price_selector)
 
         if not elements:
             raise ParseError(
-                f"Selector '{product.price_selector}' matched no elements "
-                f"for product {product.id}"
+                f"Selector '{listing.price_selector}' matched no elements "
+                f"for listing {listing.id}"
             )
 
         raw_text = elements[0].get_text(strip=True)
-        price = self._parse_price(raw_text, product.currency)
+        price = self._parse_price(raw_text, listing.currency)
         return ParsedResult(price=price)
 
     def _parse_price(self, raw_text: str, currency: str) -> Price:

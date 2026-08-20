@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from models.enums import Availability
+from models.listing import ProductListing
 from models.price import Price
 from models.product import Product
 from models.site import Site
@@ -24,17 +25,15 @@ DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "scripts" / "schema.
 
 
 _SELECT_PRODUCT_BY_ID = """
-SELECT id, name, site_name, site_base_url, site_default_headers, url,
-       price_selector, brand, category, currency, enabled, target_price,
-       parser_type, json_variable, price_path, currency_path, availability
+SELECT id, name, brand, category, currency, enabled, target_price,
+       availability, listings
 FROM products
 WHERE id = %(product_id)s
 """
 
 _SELECT_PRODUCTS = """
-SELECT id, name, site_name, site_base_url, site_default_headers, url,
-       price_selector, brand, category, currency, enabled, target_price,
-       parser_type, json_variable, price_path, currency_path, availability
+SELECT id, name, brand, category, currency, enabled, target_price,
+       availability, listings
 FROM products
 """
 
@@ -42,45 +41,35 @@ _SELECT_ENABLED_PRODUCTS = _SELECT_PRODUCTS + "\nWHERE enabled = TRUE"
 
 _UPSERT_PRODUCT = """
 INSERT INTO products (
-    id, name, site_name, site_base_url, site_default_headers, url,
-    price_selector, brand, category, currency, enabled, target_price,
-    parser_type, json_variable, price_path, currency_path, availability
+    id, name, brand, category, currency, enabled, target_price,
+    availability, listings
 ) VALUES (
-    %(id)s, %(name)s, %(site_name)s, %(site_base_url)s, %(site_default_headers)s::jsonb, %(url)s,
-    %(price_selector)s, %(brand)s, %(category)s, %(currency)s, %(enabled)s, %(target_price)s,
-    %(parser_type)s, %(json_variable)s, %(price_path)s, %(currency_path)s, %(availability)s
+    %(id)s, %(name)s, %(brand)s, %(category)s, %(currency)s, %(enabled)s, %(target_price)s,
+    %(availability)s, %(listings)s::jsonb
 )
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
-    site_name = EXCLUDED.site_name,
-    site_base_url = EXCLUDED.site_base_url,
-    site_default_headers = EXCLUDED.site_default_headers,
-    url = EXCLUDED.url,
-    price_selector = EXCLUDED.price_selector,
     brand = EXCLUDED.brand,
     category = EXCLUDED.category,
     currency = EXCLUDED.currency,
     enabled = EXCLUDED.enabled,
     target_price = EXCLUDED.target_price,
-    parser_type = EXCLUDED.parser_type,
-    json_variable = EXCLUDED.json_variable,
-    price_path = EXCLUDED.price_path,
-    currency_path = EXCLUDED.currency_path,
     availability = EXCLUDED.availability,
+    listings = EXCLUDED.listings,
     updated_at = now()
 """
 
 _DELETE_PRODUCT = "DELETE FROM products WHERE id = %(product_id)s"
 
 _INSERT_PRICE_HISTORY = """
-INSERT INTO price_history (product_id, value, currency, raw_text)
-VALUES (%(product_id)s, %(value)s, %(currency)s, %(raw_text)s)
+INSERT INTO price_history (listing_id, value, currency, raw_text)
+VALUES (%(listing_id)s, %(value)s, %(currency)s, %(raw_text)s)
 """
 
 _SELECT_LATEST_PRICE = """
 SELECT value, currency, raw_text
 FROM price_history
-WHERE product_id = %(product_id)s
+WHERE listing_id = %(listing_id)s
 ORDER BY observed_at DESC, id DESC
 LIMIT 1
 """
@@ -88,14 +77,14 @@ LIMIT 1
 _SELECT_PRICE_HISTORY = """
 SELECT value, currency, raw_text
 FROM price_history
-WHERE product_id = %(product_id)s
+WHERE listing_id = %(listing_id)s
 ORDER BY observed_at DESC, id DESC
 """
 
 _SELECT_LOWEST_PRICE = """
 SELECT value, currency, raw_text
 FROM price_history
-WHERE product_id = %(product_id)s
+WHERE listing_id = %(listing_id)s
 ORDER BY value ASC, id ASC
 LIMIT 1
 """
@@ -106,20 +95,6 @@ def _decimal(value: object) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
-
-
-def _serialize_headers(headers: dict[str, str] | None) -> str | None:
-    """Serialize optional site headers for the JSONB column."""
-    return json.dumps(headers) if headers is not None else None
-
-
-def _deserialize_headers(value: Any) -> dict[str, str] | None:
-    """Deserialize a JSONB column, accepting dicts from psycopg or JSON text."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return json.loads(value)
-    return dict(value)
 
 
 def _availability_to_db(value: Availability | None) -> str | None:
@@ -137,14 +112,55 @@ def _availability_from_db(value: str | None) -> Availability | None:
         return None
 
 
-def _price_selector_to_db(value: str) -> str | None:
-    """Store an empty CSS selector as NULL."""
-    return value if value else None
+def _listing_to_dict(listing: ProductListing) -> dict[str, Any]:
+    """Convert a ``ProductListing`` to a JSON-serialisable dictionary."""
+    return {
+        "id": listing.id,
+        "site_name": listing.site.name,
+        "site_base_url": listing.site.base_url,
+        "site_default_headers": listing.site.default_headers,
+        "url": listing.url,
+        "price_selector": listing.price_selector,
+        "parser_type": listing.parser_type,
+        "json_variable": listing.json_variable,
+        "price_path": listing.price_path,
+        "currency_path": listing.currency_path,
+        "currency": listing.currency,
+    }
 
 
-def _price_selector_from_db(value: str | None) -> str:
-    """Read a NULL CSS selector as the empty string."""
-    return value or ""
+def _serialize_listings(listings: list[ProductListing]) -> str:
+    """Serialize product listings to JSON text for the JSONB column."""
+    return json.dumps([_listing_to_dict(listing) for listing in listings])
+
+
+def _deserialize_listings(value: Any) -> list[ProductListing]:
+    """Deserialize a JSONB listings column to ``ProductListing`` objects."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = json.loads(value)
+
+    listings: list[ProductListing] = []
+    for item in value:
+        listings.append(
+            ProductListing(
+                id=item["id"],
+                site=Site(
+                    name=item["site_name"],
+                    base_url=item.get("site_base_url"),
+                    default_headers=item.get("site_default_headers"),
+                ),
+                url=item["url"],
+                price_selector=item.get("price_selector", ""),
+                parser_type=item.get("parser_type", "auto"),
+                json_variable=item.get("json_variable"),
+                price_path=item.get("price_path"),
+                currency_path=item.get("currency_path"),
+                currency=item.get("currency", "AUD"),
+            )
+        )
+    return listings
 
 
 def product_to_row(product: Product) -> dict[str, Any]:
@@ -152,21 +168,13 @@ def product_to_row(product: Product) -> dict[str, Any]:
     return {
         "id": product.id,
         "name": product.name,
-        "site_name": product.site.name,
-        "site_base_url": product.site.base_url,
-        "site_default_headers": _serialize_headers(product.site.default_headers),
-        "url": product.url,
-        "price_selector": _price_selector_to_db(product.price_selector),
         "brand": product.brand,
         "category": product.category,
         "currency": product.currency,
         "enabled": product.enabled,
         "target_price": product.target_price,
-        "parser_type": product.parser_type,
-        "json_variable": product.json_variable,
-        "price_path": product.price_path,
-        "currency_path": product.currency_path,
         "availability": _availability_to_db(product.availability),
+        "listings": _serialize_listings(product.listings),
     }
 
 
@@ -175,13 +183,7 @@ def row_to_product(row: dict[str, Any]) -> Product:
     return Product(
         id=row["id"],
         name=row["name"],
-        site=Site(
-            name=row["site_name"],
-            base_url=row.get("site_base_url"),
-            default_headers=_deserialize_headers(row.get("site_default_headers")),
-        ),
-        url=row["url"],
-        price_selector=_price_selector_from_db(row.get("price_selector")),
+        listings=_deserialize_listings(row.get("listings")),
         brand=row.get("brand"),
         category=row.get("category"),
         currency=row.get("currency") or "AUD",
@@ -191,10 +193,6 @@ def row_to_product(row: dict[str, Any]) -> Product:
             if row.get("target_price") is not None
             else None
         ),
-        parser_type=row.get("parser_type") or "css",
-        json_variable=row.get("json_variable"),
-        price_path=row.get("price_path"),
-        currency_path=row.get("currency_path"),
         availability=_availability_from_db(row.get("availability")),
     )
 
@@ -274,13 +272,13 @@ class PostgresPriceHistoryStore(PriceHistoryStore):
         """Initialize the store with a psycopg connection."""
         self._connection = connection
 
-    def record(self, product_id: str, price: Price) -> None:
-        """Store a price observation for a product."""
+    def record(self, listing_id: str, price: Price) -> None:
+        """Store a price observation for a listing."""
         try:
             self._connection.execute(
                 _INSERT_PRICE_HISTORY,
                 {
-                    "product_id": product_id,
+                    "listing_id": listing_id,
                     "value": price.value,
                     "currency": price.currency,
                     "raw_text": price.raw_text,
@@ -288,41 +286,41 @@ class PostgresPriceHistoryStore(PriceHistoryStore):
             )
         except Exception as exc:
             raise StorageError(
-                f"Failed to record price for product {product_id}"
+                f"Failed to record price for listing {listing_id}"
             ) from exc
 
-    def get_latest(self, product_id: str) -> Price | None:
+    def get_latest(self, listing_id: str) -> Price | None:
         """Return the most recent price observation, if any."""
         try:
             row = self._connection.execute(
-                _SELECT_LATEST_PRICE, {"product_id": product_id}
+                _SELECT_LATEST_PRICE, {"listing_id": listing_id}
             ).fetchone()
         except Exception as exc:
             raise StorageError(
-                f"Failed to get latest price for product {product_id}"
+                f"Failed to get latest price for listing {listing_id}"
             ) from exc
         return row_to_price(row) if row else None
 
-    def get_history(self, product_id: str) -> list[Price]:
-        """Return all recorded prices for a product, newest first."""
+    def get_history(self, listing_id: str) -> list[Price]:
+        """Return all recorded prices for a listing, newest first."""
         try:
             rows = self._connection.execute(
-                _SELECT_PRICE_HISTORY, {"product_id": product_id}
+                _SELECT_PRICE_HISTORY, {"listing_id": listing_id}
             ).fetchall()
         except Exception as exc:
             raise StorageError(
-                f"Failed to get price history for product {product_id}"
+                f"Failed to get price history for listing {listing_id}"
             ) from exc
         return [row_to_price(row) for row in rows]
 
-    def get_lowest(self, product_id: str) -> Price | None:
-        """Return the lowest recorded price for a product, if any."""
+    def get_lowest(self, listing_id: str) -> Price | None:
+        """Return the lowest recorded price for a listing, if any."""
         try:
             row = self._connection.execute(
-                _SELECT_LOWEST_PRICE, {"product_id": product_id}
+                _SELECT_LOWEST_PRICE, {"listing_id": listing_id}
             ).fetchone()
         except Exception as exc:
             raise StorageError(
-                f"Failed to get lowest price for product {product_id}"
+                f"Failed to get lowest price for listing {listing_id}"
             ) from exc
         return row_to_price(row) if row else None

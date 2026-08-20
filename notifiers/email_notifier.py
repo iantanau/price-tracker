@@ -102,12 +102,25 @@ class EmailNotifier(Notifier):
 
         lines = []
         for item in payload.items:
-            price = self._format_price(item.price)
-            line = f"{item.name}: {price}"
+            lines.append(item.name)
             if item.target_price is not None:
-                line += f" (target {item.target_price})"
-            lines.append(line)
-            lines.append(f"  {item.url}")
+                lines.append(f"  Target: {item.target_price}")
+            for listing in item.listings:
+                price = self._format_price(listing.price)
+                line = f"  {listing.site_name}: {price}"
+                if (
+                    listing.price is not None
+                    and item.best_price is not None
+                    and listing.price == item.best_price
+                ):
+                    line += " (lowest)"
+                lines.append(line)
+                lines.append(f"    {listing.url}")
+            if item.trigger == "target":
+                lines.append("  Reason: at or below target price")
+            elif item.trigger == "new_low":
+                lines.append("  Reason: new all-time low")
+            lines.append("")
         return "\n".join(lines)
 
     def _render_html(self, payload: NotificationPayload) -> str:
@@ -115,16 +128,31 @@ class EmailNotifier(Notifier):
         if not payload.items:
             return f"<p>{html.escape(payload.subject)}</p>"
 
-        rows = []
+        blocks = []
         for item in payload.items:
-            price = self._format_price(item.price)
-            target = (
-                str(item.target_price) if item.target_price is not None else "—"
+            rows = []
+            for listing in item.listings:
+                price = self._format_price(listing.price)
+                raw = f"{listing.site_name} - {price}"
+                if (
+                    listing.price is not None
+                    and item.best_price is not None
+                    and listing.price == item.best_price
+                ):
+                    raw += " (lowest)"
+                url = html.escape(listing.url)
+                rows.append(
+                    f"<li>{html.escape(raw)}<br><a href=\"{url}\">{url}</a></li>"
+                )
+
+            reason = ""
+            if item.trigger == "target":
+                reason = " - at or below target"
+            elif item.trigger == "new_low":
+                reason = " - new all-time low"
+
+            blocks.append(
+                f"<p><strong>{html.escape(item.name)}</strong>{reason}</p>"
+                "<ul>" + "".join(rows) + "</ul>"
             )
-            name = html.escape(item.name)
-            url = html.escape(item.url)
-            rows.append(
-                f"<li><strong>{name}</strong> — {price} (target {target})"
-                f'<br><a href="{url}">{url}</a></li>'
-            )
-        return "<ul>" + "".join(rows) + "</ul>"
+        return "".join(blocks)

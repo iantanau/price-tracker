@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from models.listing import ProductListing
 from models.product import Product
 from models.site import Site
 
@@ -25,13 +26,23 @@ def embedded_json_html() -> str:
 
 
 @pytest.fixture
-def base_product() -> Product:
-    """A minimally configured product for parser tests."""
-    return Product(
-        id="test-product-001",
-        name="Test Product",
+def base_listing() -> ProductListing:
+    """A minimally configured listing for parser tests."""
+    return ProductListing(
+        id="test-listing-001",
         site=Site(name="Test Store"),
         url="https://test-store.example/products/001",
         price_selector=".product-price",
+        currency="AUD",
+    )
+
+
+@pytest.fixture
+def base_product(base_listing: ProductListing) -> Product:
+    """A minimally configured product wrapping one listing."""
+    return Product(
+        id="test-product-001",
+        name="Test Product",
+        listings=[base_listing],
         currency="AUD",
     )
