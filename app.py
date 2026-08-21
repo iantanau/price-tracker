@@ -10,6 +10,7 @@ from config.settings import get_settings
 from data.products import PRODUCTS
 from monitors.web_monitor import WebMonitor
 from notifiers.email_notifier import EmailNotifier
+from parsers.auto_discovery_price_parser import AutoDiscoveryPriceParser
 from parsers.css_price_parser import CssPriceParser
 from parsers.dispatching_product_parser import DispatchingProductParser
 from parsers.embedded_json_price_parser import EmbeddedJsonPriceParser
@@ -56,6 +57,7 @@ def main() -> None:
                 "css": CssPriceParser(),
                 "embedded_json": EmbeddedJsonPriceParser(),
                 "json_ld": JsonLdPriceParser(),
+                "auto": AutoDiscoveryPriceParser(),
             }
         )
         monitor = WebMonitor(client=http_client, parser=parser)

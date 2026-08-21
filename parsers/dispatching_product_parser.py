@@ -44,6 +44,13 @@ class DispatchingProductParser(ProductParser):
         parser_type = listing.parser_type or "css"
         if parser_type == "auto":
             parser_type = detect_parser_type(content, listing, set(self._parsers))
+            if (
+                parser_type == "css"
+                and not listing.price_selector
+                and not listing.price_path
+                and "auto" in self._parsers
+            ):
+                parser_type = "auto"
 
         parser = self._parsers.get(parser_type)
 

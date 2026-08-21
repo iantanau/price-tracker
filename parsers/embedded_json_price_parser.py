@@ -7,6 +7,7 @@ reads the configured path, without requiring JavaScript execution.
 """
 
 import json
+import re
 from decimal import Decimal, InvalidOperation
 
 from models.listing import ProductListing
@@ -23,8 +24,10 @@ class EmbeddedJsonPriceParser(ProductParser):
 
         Args:
             content: Raw HTML content.
-            listing: Listing configured with ``json_variable``, ``price_path``,
-                and optionally ``currency_path``.
+            listing: Listing configured with ``price_path`` and optionally
+                ``currency_path``. If ``json_variable`` is not configured, the
+                parser locates a JavaScript variable whose JSON object contains
+                ``price_path``.
 
         Returns:
             ParsedResult containing the extracted price.
@@ -33,15 +36,26 @@ class EmbeddedJsonPriceParser(ProductParser):
             ParseError: If the variable is missing, the JSON is invalid, the
                 path does not exist, or the value is not a valid number.
         """
-        if not listing.json_variable:
-            raise ParseError(f"Listing {listing.id} has no json_variable configured")
         if not listing.price_path:
             raise ParseError(f"Listing {listing.id} has no price_path configured")
 
-        json_text = self._extract_json_assignment(
-            content, listing.json_variable, listing.id
-        )
-        data = self._parse_json(json_text, listing.json_variable, listing.id)
+        if listing.json_variable:
+            if f"{listing.json_variable} =" not in content:
+                raise ParseError(
+                    f"JavaScript variable '{listing.json_variable}' not found in HTML "
+                    f"for listing {listing.id}"
+                )
+            variable = listing.json_variable
+        else:
+            variable = self._detect_variable(content, listing)
+            if variable is None:
+                raise ParseError(
+                    f"Could not locate an embedded JSON variable containing "
+                    f"'{listing.price_path}' for listing {listing.id}"
+                )
+
+        json_text = self._extract_json_assignment(content, variable, listing.id)
+        data = self._parse_json(json_text, variable, listing.id)
 
         price_value = self._get_first_existing(data, listing.price_path, listing.id)
         price = self._coerce_price(price_value, listing, data)
@@ -50,6 +64,42 @@ class EmbeddedJsonPriceParser(ProductParser):
         return ParsedResult(
             price=Price(value=price, currency=currency, raw_text=str(price_value))
         )
+
+    def find_variable(self, content: str, listing: ProductListing) -> str | None:
+        """Return the variable name to parse for ``listing``.
+
+        Explicit ``json_variable`` configuration is preferred. When it is not
+        configured, this method scans JavaScript object assignments and returns
+        the first variable whose object contains ``listing.price_path``.
+        """
+        if listing.json_variable:
+            if f"{listing.json_variable} =" in content:
+                return listing.json_variable
+            return None
+        return self._detect_variable(content, listing)
+
+    def _detect_variable(
+        self, content: str, listing: ProductListing
+    ) -> str | None:
+        """Find a JavaScript variable assignment containing ``price_path``."""
+        if not listing.price_path:
+            return None
+
+        assignment_pattern = re.compile(
+            r"(?m)([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*=\s*\{"
+        )
+        for match in assignment_pattern.finditer(content):
+            variable = match.group(1)
+            try:
+                json_text = self._extract_json_assignment(
+                    content, variable, listing.id
+                )
+                data = self._parse_json(json_text, variable, listing.id)
+                self._get_first_existing(data, listing.price_path, listing.id)
+            except ParseError:
+                continue
+            return variable
+        return None
 
     def _extract_json_assignment(
         self, content: str, variable: str, listing_id: str

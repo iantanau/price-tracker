@@ -112,11 +112,36 @@ class TestEmbeddedJsonPriceParser:
         assert result.price is not None
         assert result.price.currency == "AUD"
 
+    def test_auto_detects_variable_from_price_path(
+        self, embedded_json_html: str
+    ) -> None:
+        """Locates the JavaScript variable when json_variable is not configured."""
+        listing = replace(self.listing, json_variable=None)
+
+        result = self.parser.parse(embedded_json_html, listing)
+
+        assert result.price is not None
+        assert result.price.value == Decimal("79.95")
+        assert result.price.currency == "AUD"
+
     def test_raises_when_variable_missing(self, embedded_json_html: str) -> None:
         """Raises ParseError when the JavaScript variable is not found."""
         listing = replace(self.listing, json_variable="window.__MISSING_STATE__")
 
         with pytest.raises(ParseError, match="not found in HTML"):
+            self.parser.parse(embedded_json_html, listing)
+
+    def test_raises_when_no_embedded_variable_matches_price_path(
+        self, embedded_json_html: str
+    ) -> None:
+        """Raises ParseError when auto-detection cannot find the price path."""
+        listing = replace(
+            self.listing,
+            json_variable=None,
+            price_path="entity.products.MISSING.prices.promo.value",
+        )
+
+        with pytest.raises(ParseError, match="Could not locate an embedded JSON"):
             self.parser.parse(embedded_json_html, listing)
 
     def test_raises_when_json_invalid(self, embedded_json_html: str) -> None:

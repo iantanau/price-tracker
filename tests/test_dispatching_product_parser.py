@@ -9,6 +9,7 @@ from models.listing import ProductListing
 from models.parsed_result import ParsedResult
 from models.site import Site
 from parsers.base import ParseError
+from parsers.auto_discovery_price_parser import AutoDiscoveryPriceParser
 from parsers.css_price_parser import CssPriceParser
 from parsers.dispatching_product_parser import DispatchingProductParser
 from parsers.embedded_json_price_parser import EmbeddedJsonPriceParser
@@ -24,6 +25,7 @@ class TestDispatchingProductParser:
             parsers={
                 "css": CssPriceParser(),
                 "embedded_json": EmbeddedJsonPriceParser(),
+                "auto": AutoDiscoveryPriceParser(),
             }
         )
 
@@ -83,6 +85,7 @@ class TestDispatchingProductParser:
                 "css": CssPriceParser(),
                 "embedded_json": EmbeddedJsonPriceParser(),
                 "json_ld": JsonLdPriceParser(),
+                "auto": AutoDiscoveryPriceParser(),
             }
         )
 
@@ -111,7 +114,7 @@ class TestDispatchingProductParser:
     def test_auto_dispatches_to_embedded_json(
         self, embedded_json_html: str
     ) -> None:
-        """Routes auto to embedded JSON when its variable is present."""
+        """Routes auto to embedded JSON when its price path is present."""
         dispatcher = self._dispatcher_with_json_ld()
         listing = ProductListing(
             id="auto-json-listing",
@@ -119,7 +122,6 @@ class TestDispatchingProductParser:
             url="https://auto-store.example/products/001",
             currency="AUD",
             parser_type="auto",
-            json_variable="window.__PRELOADED_STATE__",
             price_path="entity.products.SKU-12345.prices.promo.value",
             currency_path="entity.products.SKU-12345.prices.promo.currency.code",
         )
@@ -138,3 +140,24 @@ class TestDispatchingProductParser:
 
         assert result.price is not None
         assert result.price.value == Decimal("1999.00")
+
+    def test_auto_uses_discovery_when_listing_has_no_hints(self) -> None:
+        """Routes URL-only listings to the fallback auto-discovery parser."""
+        dispatcher = self._dispatcher_with_json_ld()
+        listing = ProductListing(
+            id="url-only",
+            site=Site(name="Auto Store"),
+            url="https://auto-store.example/products/001",
+            currency="AUD",
+        )
+        html = (
+            "<script>window.__STATE__ = {"
+            '"product": {"price": {"value": 49.95, "currency": "AUD"}}'
+            "};</script>"
+        )
+
+        result = dispatcher.parse(html, listing)
+
+        assert result.price is not None
+        assert result.price.value == Decimal("49.95")
+        assert result.price.currency == "AUD"

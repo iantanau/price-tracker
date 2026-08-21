@@ -1,6 +1,7 @@
 """Content-based selection of the appropriate price parser."""
 
 from models.listing import ProductListing
+from parsers.embedded_json_price_parser import EmbeddedJsonPriceParser
 from parsers.json_ld_price_parser import JsonLdPriceParser
 
 
@@ -12,7 +13,8 @@ def detect_parser_type(
     Detection priority is:
 
     1. ``json_ld`` when the content contains a JSON-LD Product/Offer price.
-    2. ``embedded_json`` when the listing has a configured variable present.
+    2. ``embedded_json`` when the content contains a JavaScript variable whose
+       JSON object contains the listing's configured price path.
     3. ``css`` as the fallback.
 
     Args:
@@ -28,8 +30,8 @@ def detect_parser_type(
     ) is not None:
         return "json_ld"
 
-    if "embedded_json" in available and listing.json_variable:
-        if f"{listing.json_variable} =" in content:
+    if "embedded_json" in available:
+        if EmbeddedJsonPriceParser().find_variable(content, listing):
             return "embedded_json"
 
     return "css"

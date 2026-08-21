@@ -21,16 +21,6 @@ PRODUCTS: list[Product] = [
                 id="uniqlo",
                 site=Site(name="Uniqlo"),
                 url="https://www.uniqlo.com/au/en/products/E479525-000/00?colorDisplayCode=08",
-                parser_type="embedded_json",
-                json_variable="window.__PRELOADED_STATE__",
-                price_path=(
-                    "entity.pdpEntity.E479525-000-00.product.prices.promo.value"
-                    "|entity.pdpEntity.E479525-000-00.product.prices.base.value"
-                ),
-                currency_path=(
-                    "entity.pdpEntity.E479525-000-00.product.prices.promo.currency.code"
-                    "|entity.pdpEntity.E479525-000-00.product.prices.base.currency.code"
-                ),
             )
         ],
     ),

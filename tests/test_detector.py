@@ -31,9 +31,27 @@ def test_detects_json_ld_when_price_present() -> None:
 
 
 def test_detects_embedded_json_when_no_json_ld() -> None:
-    """Chooses embedded_json when the listing variable is present."""
+    """Chooses embedded_json when the configured variable is present."""
     content = "<script>window.__PRELOADED_STATE__ = {\"x\": 1}</script>"
     listing = _make_listing(json_variable="window.__PRELOADED_STATE__")
+
+    assert (
+        detect_parser_type(content, listing, {"embedded_json", "css"})
+        == "embedded_json"
+    )
+
+
+def test_detects_embedded_json_by_price_path_without_json_variable() -> None:
+    """Chooses embedded_json when an object contains the configured price path."""
+    content = (
+        "<script>window.__PRELOADED_STATE__ = {"
+        '"entity": {"products": {"SKU-12345": {'
+        '"prices": {"promo": {"value": 79.95}}'
+        "}}}}</script>"
+    )
+    listing = _make_listing(
+        price_path="entity.products.SKU-12345.prices.promo.value"
+    )
 
     assert (
         detect_parser_type(content, listing, {"embedded_json", "css"})
