@@ -31,6 +31,7 @@ PRODUCTS: list[Product] = [
         category="Carpet Cleaners",
         currency="AUD",
         enabled=True,
+        target_price=Decimal("400.00"),
         listings=[
             ProductListing(
                 id="everyday",
@@ -55,12 +56,54 @@ PRODUCTS: list[Product] = [
         ],
     ),
     Product(
+        id="shark-carpetxpert-stainstriker-ex200anz",
+        name="Shark CarpetXpert with StainStriker Carpet Washer",
+        brand="Shark",
+        category="Carpet Cleaners",
+        currency="AUD",
+        enabled=True,
+        target_price=Decimal("330.00"),
+        listings=[
+            ProductListing(
+                id="ex200-the-good-guys",
+                site=Site(name="The Good Guys"),
+                url="https://www.thegoodguys.com.au/shark-carpetxpert-with-stainstriker-carpet-washer-ex200anz?srsltid=AfmBOooOYmOZulmXcqZX9nz-Exm3RlynuYJFUl289JJn44jYg9FHdSMX",
+            ),
+            ProductListing(
+                id="ex200-woolworths",
+                site=Site(name="Woolworths"),
+                url="https://www.woolworths.com.au/shop/productdetails/1121671097",
+            ),
+            ProductListing(
+                id="ex200-amazon-au",
+                site=Site(name="Amazon Australia"),
+                url="https://www.amazon.com.au/Shark-CarpetXpert-StainStriker-Dual-Action-EX200ANZ/dp/B0DK8LC4S2",
+            ),
+            ProductListing(
+                id="ex200-harvey-norman",
+                site=Site(name="Harvey Norman"),
+                url="https://www.harveynorman.com.au/shark-carpet-xpert-cleaner-with-built-in-stainstriker.html?srsltid=AfmBOorJ3VfykRykIZMmharpnVR7eqNOQGpdGbeI_VXoFh4MEjCJkKg-",
+            ),
+            ProductListing(
+                id="ex200-appliances-online",
+                site=Site(name="Appliances Online"),
+                url="https://www.appliancesonline.com.au/product/shark-carpetxpert-deep-carpet-cleaner-with-built-in-stainstriker-model-ex200/",
+            ),
+            ProductListing(
+                id="ex200-appliance-central",
+                site=Site(name="Appliance Central"),
+                url="https://www.appliancecentral.com.au/ex200-shark-carpetxpert-deep-carpet-cleaner-v?srsltid=AfmBOooWkTyadmqMbqjTmaK1HL7weCCOg-FUyxWAyyhQI-iNF16Wi2-A",
+            ),
+        ],
+    ),
+    Product(
         id="klevv-fit-v-32gb-ddr5-6000-cl28",
         name="KLEVV FIT V 32GB (2x 16GB) DDR5 6000MHz CL28 Desktop Memory",
         brand="KLEVV",
         category="Memory",
         currency="AUD",
         enabled=True,
+        target_price=Decimal("600.00"),
         listings=[
             ProductListing(
                 id="mwave",
@@ -91,6 +134,7 @@ PRODUCTS: list[Product] = [
         category="Mobile Phones",
         currency="AUD",
         enabled=True,
+        target_price=Decimal("2100.00"),
         listings=[
             ProductListing(
                 id="officeworks",
