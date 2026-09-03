@@ -15,6 +15,7 @@ from parsers.css_price_parser import CssPriceParser
 from parsers.dispatching_product_parser import DispatchingProductParser
 from parsers.embedded_json_price_parser import EmbeddedJsonPriceParser
 from parsers.json_ld_price_parser import JsonLdPriceParser
+from services.catalog_sync import sync_catalog
 from services.comparison_service import ComparisonService
 from services.rule_engine import RuleEngine, TargetPriceRule
 from storage.in_memory import InMemoryProductStore
@@ -47,6 +48,7 @@ def main() -> None:
             ensure_schema(connection)
             product_store = PostgresProductStore(connection)
             price_history_store = PostgresPriceHistoryStore(connection)
+            sync_catalog(PRODUCTS, product_store, price_history_store)
         else:
             product_store = InMemoryProductStore(PRODUCTS)
             price_history_store = None

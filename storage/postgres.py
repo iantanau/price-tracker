@@ -89,6 +89,11 @@ ORDER BY value ASC, id ASC
 LIMIT 1
 """
 
+_DELETE_PRICE_HISTORY = """
+DELETE FROM price_history
+WHERE listing_id = %(listing_id)s
+"""
+
 
 def _decimal(value: object) -> Decimal:
     """Coerce a database numeric value to ``Decimal``."""
@@ -271,6 +276,17 @@ class PostgresPriceHistoryStore(PriceHistoryStore):
     def __init__(self, connection) -> None:
         """Initialize the store with a psycopg connection."""
         self._connection = connection
+
+    def delete_history(self, listing_id: str) -> None:
+        """Delete all price observations for a listing."""
+        try:
+            self._connection.execute(
+                _DELETE_PRICE_HISTORY, {"listing_id": listing_id}
+            )
+        except Exception as exc:
+            raise StorageError(
+                f"Failed to delete price history for listing {listing_id}"
+            ) from exc
 
     def record(self, listing_id: str, price: Price) -> None:
         """Store a price observation for a listing."""

@@ -268,6 +268,17 @@ class TestPostgresPriceHistoryStore:
             "raw_text": "$49.95",
         }
 
+    def test_delete_history_removes_listing_rows(self) -> None:
+        """delete_history issues a delete for the given listing id."""
+        connection = FakeConnection()
+        store = PostgresPriceHistoryStore(connection)
+
+        store.delete_history("listing-1")
+
+        query, params = connection.executions[0]
+        assert "DELETE FROM price_history" in query
+        assert params == {"listing_id": "listing-1"}
+
     def test_record_inserts_price(self) -> None:
         """record writes a price observation for a product."""
         connection = FakeConnection()

@@ -82,6 +82,18 @@ class PriceHistoryStore(ABC):
     """Abstract store for historical price records."""
 
     @abstractmethod
+    def delete_history(self, listing_id: str) -> None:
+        """Remove all price records for a listing.
+
+        Args:
+            listing_id: Listing whose price history should be removed.
+
+        Raises:
+            StorageError: If the deletion fails.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def record(self, listing_id: str, price: Price) -> None:
         """Store a price observation for a listing.
 
