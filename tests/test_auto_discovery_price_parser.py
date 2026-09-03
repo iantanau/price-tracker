@@ -93,3 +93,24 @@ class TestAutoDiscoveryPriceParser:
 
         with pytest.raises(ParseError, match="Could not discover"):
             self.parser.parse(html, _make_listing())
+
+    def test_raises_on_anti_bot_challenge_page(self) -> None:
+        """Rejects anti-bot challenge pages instead of scraping garbage."""
+        html = (
+            "<html><body><p>Request unsuccessful. "
+            "Incapsula incident ID: 420000780151121238-430668383820977041"
+            "</p></body></html>"
+        )
+
+        with pytest.raises(ParseError, match="Blocked or challenge page"):
+            self.parser.parse(html, _make_listing())
+
+    def test_ignores_absurdly_large_number(self) -> None:
+        """Does not treat an absurdly large number as a price."""
+        html = (
+            "<html><body><span class=\"price\">999999999999999999</span>"
+            "</body></html>"
+        )
+
+        with pytest.raises(ParseError, match="Could not discover"):
+            self.parser.parse(html, _make_listing())

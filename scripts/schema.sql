@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS price_history (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     listing_id   TEXT NOT NULL,
+    product_id   TEXT,
     value        NUMERIC NOT NULL,
     currency     TEXT NOT NULL,
     raw_text     TEXT,
@@ -32,12 +33,12 @@ DO $$
 DECLARE
     fk_name text;
 BEGIN
-    IF EXISTS (
+    IF NOT EXISTS (
         SELECT 1
         FROM information_schema.columns
         WHERE table_schema = current_schema()
           AND table_name = 'price_history'
-          AND column_name = 'product_id'
+          AND column_name = 'listing_id'
     ) THEN
         ALTER TABLE price_history ADD COLUMN IF NOT EXISTS listing_id TEXT;
 
@@ -108,6 +109,16 @@ BEGIN
         ALTER TABLE products DROP COLUMN IF EXISTS currency_path;
     END IF;
 END $$;
+
+-- Ensure the denormalised ``product_id`` exists so price history can always
+-- be linked back to its product, and backfill any existing rows.
+ALTER TABLE price_history ADD COLUMN IF NOT EXISTS product_id TEXT;
+
+UPDATE price_history ph
+   SET product_id = p.id
+  FROM products p
+ WHERE p.listings @> jsonb_build_array(jsonb_build_object('id', ph.listing_id))
+   AND ph.product_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_price_history_listing_observed
     ON price_history (listing_id, observed_at DESC, id DESC);

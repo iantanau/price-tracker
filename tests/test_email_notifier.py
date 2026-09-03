@@ -79,7 +79,7 @@ class TestEmailNotifier:
         assert message["To"] == "user@test.local"
 
         text = message.get_body(preferencelist=("plain",)).get_content().strip()
-        assert "Example Store: 49.95 AUD (lowest)" in text
+        assert "Example Store: AUD 49.95 (lowest)" in text
         assert "https://example.com/p/1" in text
 
         html = message.get_body(preferencelist=("html",)).get_content()
@@ -128,8 +128,8 @@ class TestEmailNotifier:
 
         message = mock_server.send_message.call_args[0][0]
         text = message.get_body(preferencelist=("plain",)).get_content().strip()
-        assert "First Store: 49.95 AUD" in text
-        assert "Second Store: 49.95 AUD" in text
+        assert "First Store: AUD 49.95" in text
+        assert "Second Store: AUD 49.95" in text
         assert "https://example.com/p/2" in text
 
     @patch("notifiers.email_notifier.smtplib.SMTP_SSL")

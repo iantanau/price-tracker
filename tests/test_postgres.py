@@ -285,12 +285,13 @@ class TestPostgresPriceHistoryStore:
         store = PostgresPriceHistoryStore(connection)
         price = Price(value=Decimal("49.95"), currency="AUD", raw_text="$49.95")
 
-        store.record("listing-1", price)
+        store.record("listing-1", price, "p-001")
 
         query, params = connection.executions[0]
         assert "INSERT INTO price_history" in query
         assert params == {
             "listing_id": "listing-1",
+            "product_id": "p-001",
             "value": Decimal("49.95"),
             "currency": "AUD",
             "raw_text": "$49.95",
@@ -335,7 +336,7 @@ class TestPostgresPriceHistoryStore:
         assert price.value == Decimal("39.95")
 
     @pytest.mark.parametrize("method_name, args", [
-        ("record", ("listing-1", Price(value=Decimal("1"), currency="AUD"))),
+        ("record", ("listing-1", Price(value=Decimal("1"), currency="AUD"), "p-001")),
         ("get_latest", ("listing-1",)),
         ("get_history", ("listing-1",)),
         ("get_lowest", ("listing-1",)),

@@ -39,7 +39,12 @@ class HttpxClient(HttpClient):
 
     def _build_headers(self, settings: Settings) -> dict[str, str]:
         """Combine default headers with the configured User-Agent and extras."""
-        headers: dict[str, str] = {"User-Agent": settings.http_user_agent}
+        headers: dict[str, str] = {
+            "User-Agent": settings.http_user_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-AU,en;q=0.9",
+        }
         if settings.http_headers:
             headers.update(settings.http_headers)
         return headers

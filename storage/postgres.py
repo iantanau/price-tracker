@@ -62,8 +62,8 @@ ON CONFLICT (id) DO UPDATE SET
 _DELETE_PRODUCT = "DELETE FROM products WHERE id = %(product_id)s"
 
 _INSERT_PRICE_HISTORY = """
-INSERT INTO price_history (listing_id, value, currency, raw_text)
-VALUES (%(listing_id)s, %(value)s, %(currency)s, %(raw_text)s)
+INSERT INTO price_history (listing_id, product_id, value, currency, raw_text)
+VALUES (%(listing_id)s, %(product_id)s, %(value)s, %(currency)s, %(raw_text)s)
 """
 
 _SELECT_LATEST_PRICE = """
@@ -288,13 +288,14 @@ class PostgresPriceHistoryStore(PriceHistoryStore):
                 f"Failed to delete price history for listing {listing_id}"
             ) from exc
 
-    def record(self, listing_id: str, price: Price) -> None:
+    def record(self, listing_id: str, price: Price, product_id: str) -> None:
         """Store a price observation for a listing."""
         try:
             self._connection.execute(
                 _INSERT_PRICE_HISTORY,
                 {
                     "listing_id": listing_id,
+                    "product_id": product_id,
                     "value": price.value,
                     "currency": price.currency,
                     "raw_text": price.raw_text,

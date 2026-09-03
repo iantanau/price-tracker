@@ -30,7 +30,11 @@ class Settings(BaseSettings):
     http_timeout: int = Field(default=30, description="Request timeout in seconds")
     http_retries: int = Field(default=3, description="Number of retries for failed requests")
     http_user_agent: str = Field(
-        default="PriceTracker/0.1.0",
+        default=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
         description="User-Agent header sent with every HTTP request",
     )
     http_headers: dict[str, str] = Field(

@@ -94,12 +94,13 @@ class PriceHistoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def record(self, listing_id: str, price: Price) -> None:
+    def record(self, listing_id: str, price: Price, product_id: str) -> None:
         """Store a price observation for a listing.
 
         Args:
             listing_id: Listing the price belongs to.
             price: Normalised price value observed.
+            product_id: Product that owns the listing.
 
         Raises:
             StorageError: If the write fails.

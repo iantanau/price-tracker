@@ -126,7 +126,7 @@ class ComparisonService:
             if lowest is not None:
                 lowest_prices.append(lowest)
 
-            self._record_price(listing.id, price)
+            self._record_price(product.id, listing.id, price)
 
         if not current_prices:
             return None
@@ -176,12 +176,14 @@ class ComparisonService:
             logger.exception("Failed to read lowest price for listing %s", listing_id)
             return None
 
-    def _record_price(self, listing_id: str, price: Price) -> None:
+    def _record_price(
+        self, product_id: str, listing_id: str, price: Price
+    ) -> None:
         """Record a listing price observation in history, best-effort."""
         if self.price_history_store is None:
             return
         try:
-            self.price_history_store.record(listing_id, price)
+            self.price_history_store.record(listing_id, price, product_id)
         except Exception:
             logger.exception("Failed to record price for listing %s", listing_id)
 

@@ -142,8 +142,8 @@ class TestComparisonService:
         service.run()
 
         assert history_store.record.call_args_list == [
-            (("p001-a", price_a),),
-            (("p001-b", price_b),),
+            (("p001-a", price_a, "p001"),),
+            (("p001-b", price_b, "p001"),),
         ]
 
     def test_passes_previous_and_lowest_best_to_rule_engine(self) -> None:

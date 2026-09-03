@@ -28,6 +28,15 @@ class AutoDiscoveryPriceParser(ProductParser):
     _PRICE_AMOUNT_PATTERN = re.compile(
         r"\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?"
     )
+    _MAX_PRICE = Decimal("1000000")
+    _BLOCK_MARKERS = (
+        "incapsula",
+        "request unsuccessful",
+        "incident id",
+        "captcha",
+        "access denied",
+        "are you a human",
+    )
 
     def parse(self, content: str, listing: ProductListing) -> ParsedResult:
         """Extract a price from ``content`` without requiring parser hints.
@@ -42,6 +51,11 @@ class AutoDiscoveryPriceParser(ProductParser):
         Raises:
             ParseError: If no price can be discovered.
         """
+        if self._is_block_page(content):
+            raise ParseError(
+                f"Blocked or challenge page detected for listing {listing.id}"
+            )
+
         price = (
             JsonLdPriceParser.find_price(content, listing.currency)
             or self._discover_embedded_price(content, listing)
@@ -50,6 +64,11 @@ class AutoDiscoveryPriceParser(ProductParser):
         if price is None:
             raise ParseError(f"Could not discover a price for listing {listing.id}")
         return ParsedResult(price=price)
+
+    def _is_block_page(self, content: str) -> bool:
+        """Return ``True`` when the page looks like an anti-bot challenge."""
+        lowered = content.lower()
+        return any(marker in lowered for marker in self._BLOCK_MARKERS)
 
     def _discover_embedded_price(
         self, content: str, listing: ProductListing
@@ -195,6 +214,8 @@ class AutoDiscoveryPriceParser(ProductParser):
             return None
         if not decimal.is_finite() or decimal < 0:
             return None
+        if decimal > self._MAX_PRICE:
+            return None
         return decimal
 
     def _find_currency(
@@ -248,6 +269,15 @@ class AutoDiscoveryPriceParser(ProductParser):
 
         if not candidates:
             return None
+
+        symbol_candidates = [
+            candidate
+            for candidate in candidates
+            if self._has_currency_symbol(candidate[2].raw_text or "")
+        ]
+        if symbol_candidates:
+            candidates = symbol_candidates
+
         candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
         return candidates[0][2]
 
@@ -261,6 +291,8 @@ class AutoDiscoveryPriceParser(ProductParser):
                 element.get("id", ""),
             ]
         ).lower()
+        if element.get("itemprop") in {"price", "lowPrice", "highPrice"}:
+            score += 120
         if any(
             token in identifier
             for token in ("price", "amount", "current", "sale", "offer")
@@ -272,6 +304,12 @@ class AutoDiscoveryPriceParser(ProductParser):
             score += 10
         return score
 
+    def _has_currency_symbol(self, text: str) -> bool:
+        """Return ``True`` when the text contains a common currency marker."""
+        return any(
+            symbol in text for symbol in ("$", "€", "£", "AUD", "USD", "¥")
+        )
+
     def _price_from_text(self, text: str, fallback_currency: str) -> Price | None:
         """Extract the last plausible price amount from text."""
         matches = self._PRICE_AMOUNT_PATTERN.findall(text)
@@ -282,6 +320,8 @@ class AutoDiscoveryPriceParser(ProductParser):
         try:
             value = Decimal(normalized)
         except InvalidOperation:
+            return None
+        if value > self._MAX_PRICE:
             return None
 
         currency = fallback_currency

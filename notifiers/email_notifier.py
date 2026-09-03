@@ -93,7 +93,21 @@ class EmailNotifier(Notifier):
         """Format a price value object for display."""
         if price is None:
             return "unknown price"
-        return f"{price.value} {price.currency}"
+        try:
+            value = f"{price.value:,.2f}"
+        except (TypeError, ValueError):
+            value = str(price.value)
+        return f"{price.currency} {value}"
+
+    @staticmethod
+    def _item_currency(item) -> str:
+        """Return the best available currency code for an item."""
+        if item.best_price is not None:
+            return item.best_price.currency
+        for listing in item.listings:
+            if listing.price is not None:
+                return listing.price.currency
+        return "AUD"
 
     def _render_text(self, payload: NotificationPayload) -> str:
         """Render a plain-text body for the notification batch."""
@@ -103,16 +117,20 @@ class EmailNotifier(Notifier):
         lines = []
         for item in payload.items:
             lines.append(item.name)
+            if item.best_price is not None:
+                lines.append(f"  Best price: {self._format_price(item.best_price)}")
             if item.target_price is not None:
-                lines.append(f"  Target: {item.target_price}")
+                currency = self._item_currency(item)
+                lines.append(f"  Target: {currency} {item.target_price:,.2f}")
             for listing in item.listings:
                 price = self._format_price(listing.price)
-                line = f"  {listing.site_name}: {price}"
-                if (
+                lowest = (
                     listing.price is not None
                     and item.best_price is not None
                     and listing.price == item.best_price
-                ):
+                )
+                line = f"  - {listing.site_name}: {price}"
+                if lowest:
                     line += " (lowest)"
                 lines.append(line)
                 lines.append(f"    {listing.url}")
@@ -133,26 +151,47 @@ class EmailNotifier(Notifier):
             rows = []
             for listing in item.listings:
                 price = self._format_price(listing.price)
-                raw = f"{listing.site_name} - {price}"
-                if (
+                lowest = (
                     listing.price is not None
                     and item.best_price is not None
                     and listing.price == item.best_price
-                ):
-                    raw += " (lowest)"
+                )
+                site = html.escape(listing.site_name)
+                if lowest:
+                    site = f"✓ {site}"
+                price_html = html.escape(price)
+                if lowest:
+                    price_html = f"<strong>{price_html}</strong>"
                 url = html.escape(listing.url)
                 rows.append(
-                    f"<li>{html.escape(raw)}<br><a href=\"{url}\">{url}</a></li>"
+                    f"<tr><td>{site}</td><td>{price_html}</td>"
+                    f"<td><a href=\"{url}\">View</a></td></tr>"
                 )
+
+            summary = ""
+            if item.best_price is not None:
+                summary += (
+                    "Best price: "
+                    f"<strong>{html.escape(self._format_price(item.best_price))}</strong><br>"
+                )
+            if item.target_price is not None:
+                currency = self._item_currency(item)
+                summary += f"Target: {currency} {item.target_price:,.2f}<br>"
 
             reason = ""
             if item.trigger == "target":
-                reason = " - at or below target"
+                reason = "At or below target price"
             elif item.trigger == "new_low":
-                reason = " - new all-time low"
+                reason = "New all-time low"
+            reason_html = f"<p><em>{html.escape(reason)}</em></p>" if reason else ""
 
             blocks.append(
-                f"<p><strong>{html.escape(item.name)}</strong>{reason}</p>"
-                "<ul>" + "".join(rows) + "</ul>"
+                f"<h3>{html.escape(item.name)}</h3>"
+                f"<p>{summary}</p>"
+                f"{reason_html}"
+                '<table border="0" cellpadding="4" cellspacing="0">'
+                '<tr><th align="left">Retailer</th><th align="left">Price</th><th></th></tr>'
+                + "".join(rows)
+                + "</table>"
             )
         return "".join(blocks)
