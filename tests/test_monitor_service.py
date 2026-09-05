@@ -1,6 +1,7 @@
 """Tests for ComparisonService orchestration."""
 
 from decimal import Decimal
+import logging
 from unittest.mock import Mock
 
 from models.listing import ProductListing
@@ -207,3 +208,24 @@ class TestComparisonService:
 
         self.rule_engine.should_notify.assert_not_called()
         self.notifier.send.assert_not_called()
+
+
+    def test_counts_listing_failures_in_summary(self, caplog):
+        product = self._make_product("p001", ["p001-a", "p001-b"])
+        self.product_store.list_enabled.return_value = [product]
+        self.monitor.fetch_listing.side_effect = [
+            Exception("fetch failed"),
+            ParsedResult(price=Price(value=Decimal("85.00"), currency="AUD")),
+        ]
+        self.rule_engine.should_notify.return_value = False
+
+        with caplog.at_level(
+            logging.INFO,
+            logger="price_tracker.services.comparison_service",
+        ):
+            self.service.run()
+
+        assert (
+            "Comparison pass complete: 0 alert(s), 0 product failure(s), "
+            "1 listing failure(s)" in caplog.text
+        )

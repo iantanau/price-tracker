@@ -58,15 +58,17 @@ class ComparisonService:
         logger.info("Loaded %d enabled product(s)", len(products))
 
         items: list[NotificationItem] = []
-        failed = 0
+        product_failures = 0
+        listing_failures = 0
 
         for product in products:
             try:
-                item = self._compare_product(product)
+                item, failed_listings = self._compare_product(product)
+                listing_failures += failed_listings
                 if item is not None:
                     items.append(item)
             except Exception:
-                failed += 1
+                product_failures += 1
                 logger.exception("Error comparing product %s", product.id)
 
         if items:
@@ -78,22 +80,36 @@ class ComparisonService:
             )
 
         logger.info(
-            "Comparison pass complete: %d alert(s), %d failure(s)",
+            "Comparison pass complete: %d alert(s), %d product failure(s), "
+            "%d listing failure(s)",
             len(items),
-            failed,
+            product_failures,
+            listing_failures,
         )
 
-    def _compare_product(self, product: Product) -> NotificationItem | None:
-        """Compare a product's listings and return an alert item if rules match."""
+    def _compare_product(
+        self, product: Product
+    ) -> tuple[NotificationItem | None, int]:
+        """Compare a product's listings and return an alert item and failures.
+
+        Args:
+            product: Product whose listings should be compared.
+
+        Returns:
+            A tuple of ``(notification_item, failed_listing_count)``. The item
+            is ``None`` when no rule matched or no listing produced a price.
+        """
         listing_prices: list[ListingPrice] = []
         current_prices: list[Price] = []
         previous_prices: list[Price] = []
         lowest_prices: list[Price] = []
+        failed_listings = 0
 
         for listing in product.listings:
             try:
                 result = self.monitor.fetch_listing(listing)
             except Exception:
+                failed_listings += 1
                 logger.exception("Failed to fetch listing %s", listing.id)
                 listing_prices.append(
                     ListingPrice(
@@ -129,7 +145,7 @@ class ComparisonService:
             self._record_price(product.id, listing.id, price)
 
         if not current_prices:
-            return None
+            return None, failed_listings
 
         best_price = min(current_prices, key=lambda price: price.value)
         previous_best = self._min_or_none(previous_prices)
@@ -141,19 +157,22 @@ class ComparisonService:
             previous_best,
             all_time_low,
         ):
-            return None
+            return None, failed_listings
 
-        return NotificationItem(
-            product_id=product.id,
-            name=product.name,
-            listings=tuple(listing_prices),
-            best_price=best_price,
-            target_price=product.target_price,
-            brand=product.brand,
-            category=product.category,
-            trigger=self._determine_trigger(
-                product, best_price, previous_best, all_time_low
+        return (
+            NotificationItem(
+                product_id=product.id,
+                name=product.name,
+                listings=tuple(listing_prices),
+                best_price=best_price,
+                target_price=product.target_price,
+                brand=product.brand,
+                category=product.category,
+                trigger=self._determine_trigger(
+                    product, best_price, previous_best, all_time_low
+                ),
             ),
+            failed_listings,
         )
 
     def _get_previous_price(self, listing_id: str) -> Price | None:
